@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell, utilityProcess } from "electron";
+import type { UtilityProcess } from "electron";
 import path from "path";
-import { spawn, type ChildProcess } from "child_process";
 import { setupNfc } from "./nfc";
 
 const isDev = process.env["NODE_ENV"] !== "production";
@@ -20,31 +20,34 @@ const API_PORT = Number(process.env["ELECTRON_API_PORT"] ?? 8082);
 // Port the Vite dev server is expected on (only used in pure dev mode).
 const VITE_PORT = Number(process.env["ELECTRON_VITE_PORT"] ?? 18666);
 
-let apiProcess: ChildProcess | null = null;
+let apiProcess: UtilityProcess | null = null;
 let win: BrowserWindow | null = null;
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 function apiServerEntryPath(): string {
-  if (!isDev && process.resourcesPath) {
+  if (app.isPackaged && process.resourcesPath) {
     return path.join(process.resourcesPath, "api-server", "index.mjs");
   }
-  // Dev: path relative to this file once compiled to dist/
+  // Dev / start.bat mode: relative to compiled dist/
   return path.resolve(__dirname, "../../api-server/dist/index.mjs");
 }
 
 function rendererDistPath(): string {
-  if (!isDev && process.resourcesPath) {
+  if (app.isPackaged && process.resourcesPath) {
     return path.join(process.resourcesPath, "renderer");
   }
   return path.resolve(__dirname, "../../pokevault/dist/public");
 }
 
-// ── API server child-process ──────────────────────────────────────────────────
+// ── API server via Electron utilityProcess ────────────────────────────────────
+// utilityProcess.fork() uses Electron's own bundled Node.js runtime — no
+// separate Node.js installation is required on the user's machine.
 
 function startApiServer(): void {
   const entry = apiServerEntryPath();
-  apiProcess = spawn("node", ["--enable-source-maps", entry], {
+
+  apiProcess = utilityProcess.fork(entry, [], {
     env: {
       ...process.env,
       PORT: String(API_PORT),
@@ -52,15 +55,11 @@ function startApiServer(): void {
       ELECTRON: "1",
       RENDERER_PATH: rendererDistPath(),
     },
-    stdio: isDev ? "inherit" : ["ignore", "ignore", "pipe"],
+    stdio: isDev ? "inherit" : "pipe",
   });
 
-  apiProcess.on("error", (err: Error) => {
-    console.error("[desktop] Failed to start API server:", err.message);
-  });
-
-  apiProcess.on("exit", (code: number | null) => {
-    if (code !== 0 && code !== null) {
+  apiProcess.on("exit", (code: number) => {
+    if (code !== 0) {
       console.error("[desktop] API server exited with code", code);
     }
   });
@@ -77,13 +76,11 @@ async function pollUntilReady(url: string, timeoutMs = 20_000): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  // Don't throw — just proceed; the window will show an error page if truly broken
 }
 
 // ── Window creation ───────────────────────────────────────────────────────────
 
 async function createWindow(): Promise<void> {
-  // Tell the preload which port to advertise as the API base URL
   process.env["ELECTRON_API_PORT"] = String(API_PORT);
 
   win = new BrowserWindow({
@@ -100,7 +97,6 @@ async function createWindow(): Promise<void> {
     },
   });
 
-  // External links open in the system browser, not inside Electron
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http")) shell.openExternal(url);
     return { action: "deny" };
@@ -111,14 +107,10 @@ async function createWindow(): Promise<void> {
   });
 
   if (serveFromExpress) {
-    // Packaged app OR start.bat "built renderer" mode:
-    // spin up the Express server which also serves the built React files.
     startApiServer();
     await pollUntilReady(`http://localhost:${API_PORT}/api/health`);
     await win.loadURL(`http://localhost:${API_PORT}`);
   } else {
-    // Pure dev mode: Vite dev server and API server are already running
-    // (Replit workflows or started manually in separate terminals).
     await pollUntilReady(`http://localhost:${VITE_PORT}`, 30_000);
     await win.loadURL(`http://localhost:${VITE_PORT}`);
     if (process.env["ELECTRON_DEVTOOLS"] === "1") {
@@ -145,5 +137,5 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  apiProcess?.kill("SIGTERM");
+  apiProcess?.kill();
 });

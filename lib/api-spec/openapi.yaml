@@ -3,13 +3,24 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: PokeVault API - Pokémon card inventory and NFC management
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: cards
+    description: Card inventory management
+  - name: nfc
+    description: NFC tag operations
+  - name: prices
+    description: Price history tracking
+  - name: overlay
+    description: OBS stream overlay data
+  - name: dashboard
+    description: Dashboard summary data
+
 paths:
   /healthz:
     get:
@@ -24,6 +35,350 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /cards:
+    get:
+      operationId: listCards
+      tags: [cards]
+      summary: List all cards
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: condition
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [in_collection, sold, listed]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [created_at, name, purchase_price, market_value, profit_loss]
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        "200":
+          description: List of cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Card"
+    post:
+      operationId: createCard
+      tags: [cards]
+      summary: Create a new card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardInput"
+      responses:
+        "201":
+          description: Created card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+
+  /cards/{id}:
+    get:
+      operationId: getCard
+      tags: [cards]
+      summary: Get a card by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Card details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateCard
+      tags: [cards]
+      summary: Update a card
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardUpdate"
+      responses:
+        "200":
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+    delete:
+      operationId: deleteCard
+      tags: [cards]
+      summary: Delete a card
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /cards/{id}/mark-sold:
+    post:
+      operationId: markCardSold
+      tags: [cards]
+      summary: Mark a card as sold
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SoldInput"
+      responses:
+        "200":
+          description: Updated card
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+
+  /nfc/check-url:
+    post:
+      operationId: checkNfcUrl
+      tags: [nfc]
+      summary: Check if a URL fits within NTAG213 limits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NfcUrlCheck"
+      responses:
+        "200":
+          description: URL check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NfcUrlCheckResult"
+
+  /nfc/tags:
+    get:
+      operationId: listNfcTags
+      tags: [nfc]
+      summary: List all NFC tags
+      responses:
+        "200":
+          description: List of NFC tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NfcTag"
+    post:
+      operationId: createNfcTag
+      tags: [nfc]
+      summary: Register an NFC tag for a card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NfcTagInput"
+      responses:
+        "201":
+          description: Created NFC tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NfcTag"
+
+  /nfc/tags/{tagId}:
+    patch:
+      operationId: updateNfcTag
+      tags: [nfc]
+      summary: Update NFC tag write status
+      parameters:
+        - name: tagId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NfcTagUpdate"
+      responses:
+        "200":
+          description: Updated NFC tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NfcTag"
+
+  /nfc/resolve/{shortCode}:
+    get:
+      operationId: resolveShortLink
+      tags: [nfc]
+      summary: Resolve a short link to a card
+      parameters:
+        - name: shortCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Card associated with short link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+        "404":
+          description: Short link not found
+
+  /prices/{cardId}:
+    get:
+      operationId: getPriceHistory
+      tags: [prices]
+      summary: Get price history for a card
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Price history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PriceEntry"
+    post:
+      operationId: addPriceEntry
+      tags: [prices]
+      summary: Add a price entry for a card
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceInput"
+      responses:
+        "201":
+          description: Created price entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEntry"
+
+  /overlay/{shortCode}:
+    get:
+      operationId: getOverlayData
+      tags: [overlay]
+      summary: Get OBS overlay data for a card via short code
+      parameters:
+        - name: shortCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Overlay data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverlayData"
+        "404":
+          description: Not found
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary statistics
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent card activity
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /dashboard/top-cards:
+    get:
+      operationId: getTopCards
+      tags: [dashboard]
+      summary: Get top cards by value
+      responses:
+        "200":
+          description: Top cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Card"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +389,315 @@ components:
       required:
         - status
 
+    Card:
+      type: object
+      required:
+        - id
+        - name
+        - condition
+        - status
+        - purchase_price
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        set_name:
+          type: ["string", "null"]
+        card_number:
+          type: ["string", "null"]
+        condition:
+          type: string
+          enum: [mint, near_mint, lightly_played, moderately_played, heavily_played, damaged]
+        status:
+          type: string
+          enum: [in_collection, listed, sold]
+        purchase_price:
+          type: number
+        market_value:
+          type: ["number", "null"]
+        sold_price:
+          type: ["number", "null"]
+        profit_loss:
+          type: ["number", "null"]
+        tcgplayer_url:
+          type: ["string", "null"]
+        ebay_url:
+          type: ["string", "null"]
+        short_code:
+          type: ["string", "null"]
+        nfc_tag_id:
+          type: ["integer", "null"]
+        nfc_written:
+          type: boolean
+        image_url:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    CardInput:
+      type: object
+      required:
+        - name
+        - condition
+        - purchase_price
+      properties:
+        name:
+          type: string
+        set_name:
+          type: string
+        card_number:
+          type: string
+        condition:
+          type: string
+          enum: [mint, near_mint, lightly_played, moderately_played, heavily_played, damaged]
+        purchase_price:
+          type: number
+        market_value:
+          type: number
+        tcgplayer_url:
+          type: string
+        ebay_url:
+          type: string
+        image_url:
+          type: string
+        notes:
+          type: string
+
+    CardUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        set_name:
+          type: string
+        card_number:
+          type: string
+        condition:
+          type: string
+          enum: [mint, near_mint, lightly_played, moderately_played, heavily_played, damaged]
+        status:
+          type: string
+          enum: [in_collection, listed, sold]
+        purchase_price:
+          type: number
+        market_value:
+          type: number
+        sold_price:
+          type: number
+        tcgplayer_url:
+          type: string
+        ebay_url:
+          type: string
+        image_url:
+          type: string
+        notes:
+          type: string
+
+    SoldInput:
+      type: object
+      required:
+        - sold_price
+      properties:
+        sold_price:
+          type: number
+
+    NfcTag:
+      type: object
+      required:
+        - id
+        - card_id
+        - short_code
+        - written
+        - created_at
+      properties:
+        id:
+          type: integer
+        card_id:
+          type: integer
+        tag_uid:
+          type: ["string", "null"]
+        short_code:
+          type: string
+        payload_url:
+          type: ["string", "null"]
+        payload_bytes:
+          type: ["integer", "null"]
+        written:
+          type: boolean
+        written_at:
+          type: ["string", "null"]
+        created_at:
+          type: string
+
+    NfcTagInput:
+      type: object
+      required:
+        - card_id
+      properties:
+        card_id:
+          type: integer
+        tag_uid:
+          type: string
+        payload_url:
+          type: string
+
+    NfcTagUpdate:
+      type: object
+      properties:
+        tag_uid:
+          type: string
+        payload_url:
+          type: string
+        written:
+          type: boolean
+
+    NfcUrlCheck:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+
+    NfcUrlCheckResult:
+      type: object
+      required:
+        - url
+        - byte_length
+        - max_bytes
+        - fits
+        - short_url_recommended
+      properties:
+        url:
+          type: string
+        byte_length:
+          type: integer
+        max_bytes:
+          type: integer
+        fits:
+          type: boolean
+        short_url_recommended:
+          type: boolean
+        message:
+          type: ["string", "null"]
+
+    PriceEntry:
+      type: object
+      required:
+        - id
+        - card_id
+        - price
+        - source
+        - recorded_at
+      properties:
+        id:
+          type: integer
+        card_id:
+          type: integer
+        price:
+          type: number
+        source:
+          type: string
+          enum: [tcgplayer, ebay, manual]
+        recorded_at:
+          type: string
+
+    PriceInput:
+      type: object
+      required:
+        - price
+        - source
+      properties:
+        price:
+          type: number
+        source:
+          type: string
+          enum: [tcgplayer, ebay, manual]
+
+    OverlayData:
+      type: object
+      required:
+        - card_name
+        - condition
+        - market_value
+        - purchase_price
+      properties:
+        card_name:
+          type: string
+        set_name:
+          type: ["string", "null"]
+        card_number:
+          type: ["string", "null"]
+        condition:
+          type: string
+        market_value:
+          type: ["number", "null"]
+        purchase_price:
+          type: number
+        profit_loss:
+          type: ["number", "null"]
+        image_url:
+          type: ["string", "null"]
+        recent_prices:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceEntry"
+
+    DashboardSummary:
+      type: object
+      required:
+        - total_cards
+        - total_invested
+        - total_market_value
+        - total_profit_loss
+        - cards_sold
+        - total_sold_revenue
+        - realized_profit_loss
+        - nfc_tagged_count
+      properties:
+        total_cards:
+          type: integer
+        total_invested:
+          type: number
+        total_market_value:
+          type: number
+        total_profit_loss:
+          type: number
+        cards_sold:
+          type: integer
+        total_sold_revenue:
+          type: number
+        realized_profit_loss:
+          type: number
+        nfc_tagged_count:
+          type: integer
+
+    ActivityItem:
+      type: object
+      required:
+        - id
+        - type
+        - card_id
+        - card_name
+        - timestamp
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [added, sold, nfc_written, price_updated]
+        card_id:
+          type: integer
+        card_name:
+          type: string
+        amount:
+          type: ["number", "null"]
+        timestamp:
+          type: string

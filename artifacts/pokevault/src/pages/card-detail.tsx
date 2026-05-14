@@ -8,6 +8,7 @@ import {
   useGetPriceHistory,
   getGetPriceHistoryQueryKey,
   useAddPriceEntry,
+  useRefreshCardPrice,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +51,7 @@ import {
   Save,
   X,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -132,6 +134,17 @@ export default function CardDetail() {
         toast({ title: "Card marked as sold" });
       },
       onError: () => toast({ title: "Failed to mark card as sold", variant: "destructive" }),
+    },
+  });
+
+  const refreshPrice = useRefreshCardPrice({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getGetCardQueryKey(cardId) });
+        queryClient.invalidateQueries({ queryKey: getGetPriceHistoryQueryKey(cardId) });
+        toast({ title: data.message });
+      },
+      onError: () => toast({ title: "Price refresh failed", variant: "destructive" }),
     },
   });
 
@@ -237,6 +250,20 @@ export default function CardDetail() {
           ? <Wifi className="h-4 w-4 text-primary" />
           : <WifiOff className="h-4 w-4 text-muted-foreground/40" />}
         <div className="flex gap-2">
+          {!editing && (
+            <Button
+              data-testid="button-refresh-price"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => refreshPrice.mutate({ id: cardId })}
+              disabled={refreshPrice.isPending}
+              title="Refresh market price"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${refreshPrice.isPending ? "animate-spin" : ""}`} />
+              {refreshPrice.isPending ? "Refreshing…" : "Refresh Price"}
+            </Button>
+          )}
           {!editing && card.status !== "sold" && (
             <Button
               data-testid="button-mark-sold"

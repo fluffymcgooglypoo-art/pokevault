@@ -264,4 +264,26 @@ router.post("/cards/:id/mark-sold", async (req, res): Promise<void> => {
   res.json(cardToResponse(card));
 });
 
+// TODO: replace stub bodies with scraper calls when price scraper is built
+router.post("/cards/refresh-prices", async (_req, res): Promise<void> => {
+  const cards = await db.select({ id: cardsTable.id }).from(cardsTable);
+  // Scraper hook-in point: iterate cards and fetch live prices here
+  res.json({ refreshed: 0, message: `Scraper not yet connected — ${cards.length} cards queued` });
+});
+
+router.post("/cards/:id/refresh-price", async (req, res): Promise<void> => {
+  const params = GetCardParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const [card] = await db.select().from(cardsTable).where(eq(cardsTable.id, params.data.id));
+  if (!card) {
+    res.status(404).json({ error: "Card not found" });
+    return;
+  }
+  // Scraper hook-in point: fetch live price for this card here
+  res.json({ refreshed: 0, message: "Scraper not yet connected — price refresh queued" });
+});
+
 export default router;

@@ -33,6 +33,7 @@ import type {
   OverlayData,
   PriceEntry,
   PriceInput,
+  RefreshResult,
   SoldInput,
 } from "./api.schemas";
 
@@ -634,6 +635,173 @@ export const useMarkCardSold = <
   TContext
 > => {
   return useMutation(getMarkCardSoldMutationOptions(options));
+};
+
+/**
+ * Triggers a market price refresh for every card in the inventory. Stub — scraper integration hooks in here.
+ * @summary Refresh market prices for all cards
+ */
+export const getRefreshAllPricesUrl = () => {
+  return `/api/cards/refresh-prices`;
+};
+
+export const refreshAllPrices = async (
+  options?: RequestInit,
+): Promise<RefreshResult> => {
+  return customFetch<RefreshResult>(getRefreshAllPricesUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRefreshAllPricesMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshAllPrices>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof refreshAllPrices>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["refreshAllPrices"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof refreshAllPrices>>,
+    void
+  > = () => {
+    return refreshAllPrices(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RefreshAllPricesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof refreshAllPrices>>
+>;
+
+export type RefreshAllPricesMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Refresh market prices for all cards
+ */
+export const useRefreshAllPrices = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshAllPrices>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshAllPrices>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getRefreshAllPricesMutationOptions(options));
+};
+
+/**
+ * Triggers a market price refresh for the given card. Stub — scraper integration hooks in here.
+ * @summary Refresh market price for a single card
+ */
+export const getRefreshCardPriceUrl = (id: number) => {
+  return `/api/cards/${id}/refresh-price`;
+};
+
+export const refreshCardPrice = async (
+  id: number,
+  options?: RequestInit,
+): Promise<RefreshResult> => {
+  return customFetch<RefreshResult>(getRefreshCardPriceUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRefreshCardPriceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshCardPrice>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof refreshCardPrice>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["refreshCardPrice"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof refreshCardPrice>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return refreshCardPrice(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RefreshCardPriceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof refreshCardPrice>>
+>;
+
+export type RefreshCardPriceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Refresh market price for a single card
+ */
+export const useRefreshCardPrice = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof refreshCardPrice>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof refreshCardPrice>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRefreshCardPriceMutationOptions(options));
 };
 
 /**

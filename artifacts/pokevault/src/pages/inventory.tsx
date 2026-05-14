@@ -6,6 +6,7 @@ import {
   useCreateCard,
   useDeleteCard,
   useUpdateCard,
+  useRefreshAllPrices,
 } from "@workspace/api-client-react";
 import { ScanToSellDialog } from "@/components/scan-to-sell-dialog";
 import { useQueryClient } from "@tanstack/react-query";
@@ -36,7 +37,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod/v4";
-import { Plus, Search, ArrowUpDown, Wifi, ChevronRight, Trash2, ScanLine } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Wifi, ChevronRight, Trash2, ScanLine, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CONDITIONS: Record<string, string> = {
@@ -163,6 +164,16 @@ export default function Inventory() {
     query: { queryKey: getListCardsQueryKey(params) },
   });
 
+  const refreshAllPrices = useRefreshAllPrices({
+    mutation: {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
+        toast({ title: data.message });
+      },
+      onError: () => toast({ title: "Price refresh failed", variant: "destructive" }),
+    },
+  });
+
   const createCard = useCreateCard({
     mutation: {
       onSuccess: () => {
@@ -261,9 +272,21 @@ export default function Inventory() {
         </Select>
 
         <Button
+          data-testid="button-refresh-prices"
+          variant="outline"
+          className="ml-auto border-border text-muted-foreground hover:text-foreground"
+          onClick={() => refreshAllPrices.mutate()}
+          disabled={refreshAllPrices.isPending}
+          title="Refresh market prices for all cards"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshAllPrices.isPending ? "animate-spin" : ""}`} />
+          {refreshAllPrices.isPending ? "Refreshing…" : "Refresh Prices"}
+        </Button>
+
+        <Button
           data-testid="button-scan-to-sell"
           variant="outline"
-          className="ml-auto border-primary/50 text-primary hover:bg-primary/10"
+          className="border-primary/50 text-primary hover:bg-primary/10"
           onClick={() => setScanOpen(true)}
           title="Scan to Sell (S)"
         >

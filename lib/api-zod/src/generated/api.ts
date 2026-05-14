@@ -241,6 +241,32 @@ export const MarkCardSoldResponse = zod.object({
 });
 
 /**
+ * Triggers a market price refresh for every card in the inventory. Stub — scraper integration hooks in here.
+ * @summary Refresh market prices for all cards
+ */
+export const RefreshAllPricesResponse = zod.object({
+  refreshed: zod
+    .number()
+    .describe("Number of cards whose prices were refreshed"),
+  message: zod.string(),
+});
+
+/**
+ * Triggers a market price refresh for the given card. Stub — scraper integration hooks in here.
+ * @summary Refresh market price for a single card
+ */
+export const RefreshCardPriceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RefreshCardPriceResponse = zod.object({
+  refreshed: zod
+    .number()
+    .describe("Number of cards whose prices were refreshed"),
+  message: zod.string(),
+});
+
+/**
  * @summary Check if a URL fits within NTAG213 limits
  */
 export const CheckNfcUrlBody = zod.object({

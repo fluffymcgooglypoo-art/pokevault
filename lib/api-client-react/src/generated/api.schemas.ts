@@ -65,6 +65,12 @@ export interface Card {
   updated_at: string;
 }
 
+export interface RefreshResult {
+  /** Number of cards whose prices were refreshed */
+  refreshed: number;
+  message: string;
+}
+
 export type CardInputCondition =
   (typeof CardInputCondition)[keyof typeof CardInputCondition];
 

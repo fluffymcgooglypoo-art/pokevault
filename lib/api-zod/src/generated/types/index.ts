@@ -33,4 +33,5 @@ export * from "./priceEntry";
 export * from "./priceEntrySource";
 export * from "./priceInput";
 export * from "./priceInputSource";
+export * from "./refreshResult";
 export * from "./soldInput";

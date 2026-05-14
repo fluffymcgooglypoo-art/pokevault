@@ -36,7 +36,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod/v4";
-import { Plus, Search, ArrowUpDown, Wifi, ChevronRight, Trash2, Check, X } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Wifi, ChevronRight, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CONDITIONS: Record<string, string> = {
@@ -108,7 +108,7 @@ function InlineSoldEditor({
   }
 
   return (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+    <div className="w-full" onClick={(e) => e.stopPropagation()}>
       <Input
         ref={inputRef}
         autoFocus
@@ -118,19 +118,10 @@ function InlineSoldEditor({
         value={val}
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") onDone(); }}
-        className="h-6 w-24 text-xs font-mono bg-background border-primary px-1 py-0"
-      />
-      <button
-        data-testid={`button-save-sold-${cardId}`}
-        onClick={save}
+        onBlur={save}
+        className="h-6 w-full text-xs font-mono text-right bg-background border-primary px-1 py-0"
         disabled={updateCard.isPending}
-        className="text-green-400 hover:text-green-300 disabled:opacity-50"
-      >
-        <Check className="h-3.5 w-3.5" />
-      </button>
-      <button onClick={onDone} className="text-muted-foreground hover:text-foreground">
-        <X className="h-3.5 w-3.5" />
-      </button>
+      />
     </div>
   );
 }
@@ -381,7 +372,7 @@ export default function Inventory() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Paid</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Market</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Sold</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider" style={{ width: "7rem", minWidth: "7rem" }}>Sold</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">P&amp;L</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">% Paid</th>
                 <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">NFC</th>
@@ -438,7 +429,7 @@ export default function Inventory() {
                     </td>
 
                     {/* Sold price — click to inline-edit */}
-                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4 py-3 text-right" style={{ width: "7rem", minWidth: "7rem", maxWidth: "7rem" }} onClick={(e) => e.stopPropagation()}>
                       {editingSoldId === card.id ? (
                         <InlineSoldEditor
                           cardId={card.id}

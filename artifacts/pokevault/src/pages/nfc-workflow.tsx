@@ -219,7 +219,7 @@ export default function NfcWorkflow() {
                       id: card.id,
                       name: card.name,
                       short_code: card.short_code ?? null,
-                      nfc_written: card.nfc_written,
+                      nfc_written: card.nfc_written ?? false,
                       nfc_tag_id: card.nfc_tag_id ?? null,
                       purchase_price: card.purchase_price,
                       market_value: card.market_value ?? null,

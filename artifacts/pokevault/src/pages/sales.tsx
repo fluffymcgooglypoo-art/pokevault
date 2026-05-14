@@ -42,13 +42,13 @@ const CONDITION_COLORS: Record<string, string> = {
 type FoundCard = {
   id: number;
   name: string;
-  set_name: string | null;
-  card_number: string | null;
+  set_name?: string | null;
+  card_number?: string | null;
   condition: string;
   status: string;
   purchase_price: number;
-  market_value: number | null;
-  sold_price: number | null;
+  market_value?: number | null;
+  sold_price?: number | null;
 };
 
 type SaleRecord = {

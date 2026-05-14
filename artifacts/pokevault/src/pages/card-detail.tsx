@@ -149,7 +149,7 @@ export default function CardDetail() {
   });
 
   const form = useForm<EditValues>({
-    resolver: zodResolver(editSchema),
+    resolver: zodResolver(editSchema as any),
     values: card
       ? {
           name: card.name,
@@ -166,12 +166,12 @@ export default function CardDetail() {
   });
 
   const soldForm = useForm<SoldValues>({
-    resolver: zodResolver(soldSchema),
+    resolver: zodResolver(soldSchema as any),
     defaultValues: { sold_price: card?.market_value ?? 0 },
   });
 
   const priceForm = useForm<PriceValues>({
-    resolver: zodResolver(priceSchema),
+    resolver: zodResolver(priceSchema as any),
     defaultValues: { price: 0, source: "manual" },
   });
 

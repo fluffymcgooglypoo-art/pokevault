@@ -155,8 +155,8 @@ export default function Inventory() {
   const params = {
     ...(search ? { search } : {}),
     ...(filterCondition !== "all" ? { condition: filterCondition } : {}),
-    ...(filterStatus !== "all" ? { status: filterStatus } : {}),
-    sort,
+    ...(filterStatus !== "all" ? { status: filterStatus as "in_collection" | "sold" | "listed" } : {}),
+    sort: sort as "created_at" | "name" | "purchase_price" | "market_value" | "profit_loss",
   };
 
   const { data: cards, isLoading } = useListCards(params, {
@@ -186,7 +186,7 @@ export default function Inventory() {
   });
 
   const form = useForm<AddCardValues>({
-    resolver: zodResolver(addCardSchema),
+    resolver: zodResolver(addCardSchema as any),
     defaultValues: {
       name: "",
       set_name: "",

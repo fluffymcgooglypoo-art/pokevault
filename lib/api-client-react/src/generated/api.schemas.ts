@@ -54,6 +54,8 @@ export interface Card {
   nfc_tag_id?: number | null;
   nfc_written?: boolean;
   /** @nullable */
+  percent_paid?: number | null;
+  /** @nullable */
   image_url?: string | null;
   /** @nullable */
   notes?: string | null;
@@ -83,6 +85,7 @@ export interface CardInput {
   tcgplayer_url?: string;
   ebay_url?: string;
   image_url?: string;
+  percent_paid?: number;
   notes?: string;
 }
 
@@ -116,6 +119,7 @@ export interface CardUpdate {
   purchase_price?: number;
   market_value?: number;
   sold_price?: number;
+  percent_paid?: number;
   tcgplayer_url?: string;
   ebay_url?: string;
   image_url?: string;

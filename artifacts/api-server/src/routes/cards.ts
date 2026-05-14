@@ -19,6 +19,7 @@ function cardToResponse(card: typeof cardsTable.$inferSelect) {
   const purchasePrice = parseFloat(card.purchasePrice ?? "0");
   const marketValue = card.marketValue != null ? parseFloat(card.marketValue) : null;
   const soldPrice = card.soldPrice != null ? parseFloat(card.soldPrice) : null;
+  const percentPaid = card.percentPaid != null ? parseFloat(card.percentPaid) : null;
   let profitLoss: number | null = null;
   if (card.status === "sold" && soldPrice != null) {
     profitLoss = soldPrice - purchasePrice;
@@ -36,6 +37,7 @@ function cardToResponse(card: typeof cardsTable.$inferSelect) {
     market_value: marketValue,
     sold_price: soldPrice,
     profit_loss: profitLoss,
+    percent_paid: percentPaid,
     tcgplayer_url: card.tcgplayerUrl ?? null,
     ebay_url: card.ebayUrl ?? null,
     short_code: card.shortCode ?? null,
@@ -87,7 +89,7 @@ router.post("/cards", async (req, res): Promise<void> => {
     return;
   }
 
-  const { name, set_name, card_number, condition, purchase_price, market_value, tcgplayer_url, ebay_url, image_url, notes } = parsed.data;
+  const { name, set_name, card_number, condition, purchase_price, market_value, percent_paid, tcgplayer_url, ebay_url, image_url, notes } = parsed.data;
 
   const shortCode = nanoid(8);
 
@@ -99,6 +101,7 @@ router.post("/cards", async (req, res): Promise<void> => {
     status: "in_collection",
     purchasePrice: String(purchase_price),
     marketValue: market_value != null ? String(market_value) : null,
+    percentPaid: percent_paid != null ? String(percent_paid) : null,
     tcgplayerUrl: tcgplayer_url,
     ebayUrl: ebay_url,
     shortCode,
@@ -153,7 +156,7 @@ router.patch("/cards/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const { name, set_name, card_number, condition, status, purchase_price, market_value, sold_price, tcgplayer_url, ebay_url, image_url, notes } = parsed.data;
+  const { name, set_name, card_number, condition, status, purchase_price, market_value, sold_price, percent_paid, tcgplayer_url, ebay_url, image_url, notes } = parsed.data;
 
   const updateData: Record<string, unknown> = {};
   if (name != null) updateData.name = name;
@@ -176,7 +179,11 @@ router.patch("/cards/:id", async (req, res): Promise<void> => {
       amount: String(market_value),
     });
   }
-  if (sold_price != null) updateData.soldPrice = String(sold_price);
+  if (sold_price != null) {
+    updateData.soldPrice = String(sold_price);
+    if (status == null) updateData.status = "sold";
+  }
+  if (percent_paid != null) updateData.percentPaid = String(percent_paid);
   if (tcgplayer_url != null) updateData.tcgplayerUrl = tcgplayer_url;
   if (ebay_url != null) updateData.ebayUrl = ebay_url;
   if (image_url != null) updateData.imageUrl = image_url;

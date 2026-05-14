@@ -432,6 +432,8 @@ components:
           type: ["integer", "null"]
         nfc_written:
           type: boolean
+        percent_paid:
+          type: ["number", "null"]
         image_url:
           type: ["string", "null"]
         notes:
@@ -467,6 +469,8 @@ components:
           type: string
         image_url:
           type: string
+        percent_paid:
+          type: number
         notes:
           type: string
 
@@ -490,6 +494,8 @@ components:
         market_value:
           type: number
         sold_price:
+          type: number
+        percent_paid:
           type: number
         tcgplayer_url:
           type: string

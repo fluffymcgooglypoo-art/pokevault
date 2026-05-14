@@ -17,5 +17,6 @@ export interface CardInput {
   tcgplayer_url?: string;
   ebay_url?: string;
   image_url?: string;
+  percent_paid?: number;
   notes?: string;
 }

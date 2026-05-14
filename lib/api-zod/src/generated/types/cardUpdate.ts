@@ -17,6 +17,7 @@ export interface CardUpdate {
   purchase_price?: number;
   market_value?: number;
   sold_price?: number;
+  percent_paid?: number;
   tcgplayer_url?: string;
   ebay_url?: string;
   image_url?: string;

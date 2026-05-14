@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   useListCards,
@@ -6,12 +6,11 @@ import {
   useCreateCard,
   useDeleteCard,
   useMarkCardSold,
+  useUpdateCard,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -37,7 +36,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod/v4";
-import { Plus, Search, ArrowUpDown, Wifi, ChevronRight, Trash2, DollarSign } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Wifi, ChevronRight, Trash2, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CONDITIONS: Record<string, string> = {
@@ -69,17 +68,72 @@ const addCardSchema = z.object({
   set_name: z.string().optional(),
   card_number: z.string().optional(),
   condition: z.enum(["mint", "near_mint", "lightly_played", "moderately_played", "heavily_played", "damaged"]),
-  purchase_price: z.coerce.number().min(0, "Price must be positive"),
+  purchase_price: z.coerce.number().min(0),
   market_value: z.coerce.number().optional(),
+  percent_paid: z.coerce.number().min(0).max(999).optional(),
   notes: z.string().optional(),
 });
-
 type AddCardValues = z.infer<typeof addCardSchema>;
 
-const soldSchema = z.object({
-  sold_price: z.coerce.number().min(0, "Price must be positive"),
-});
-type SoldValues = z.infer<typeof soldSchema>;
+// Inline cell editor for sold price
+function InlineSoldEditor({
+  cardId,
+  currentValue,
+  onDone,
+}: {
+  cardId: number;
+  currentValue: number | null;
+  onDone: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [val, setVal] = useState(currentValue != null ? String(currentValue) : "");
+
+  const updateCard = useUpdateCard({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
+        onDone();
+        toast({ title: "Sold price updated" });
+      },
+      onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+    },
+  });
+
+  function save() {
+    const num = parseFloat(val);
+    if (isNaN(num) || num < 0) { onDone(); return; }
+    updateCard.mutate({ id: cardId, data: { sold_price: num } });
+  }
+
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <Input
+        ref={inputRef}
+        autoFocus
+        data-testid={`input-inline-sold-${cardId}`}
+        type="number"
+        step="0.01"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") onDone(); }}
+        className="h-6 w-24 text-xs font-mono bg-background border-primary px-1 py-0"
+      />
+      <button
+        data-testid={`button-save-sold-${cardId}`}
+        onClick={save}
+        disabled={updateCard.isPending}
+        className="text-green-400 hover:text-green-300 disabled:opacity-50"
+      >
+        <Check className="h-3.5 w-3.5" />
+      </button>
+      <button onClick={onDone} className="text-muted-foreground hover:text-foreground">
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
 
 export default function Inventory() {
   const [, setLocation] = useLocation();
@@ -90,7 +144,7 @@ export default function Inventory() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [sort, setSort] = useState("created_at");
   const [addOpen, setAddOpen] = useState(false);
-  const [soldCardId, setSoldCardId] = useState<number | null>(null);
+  const [editingSoldId, setEditingSoldId] = useState<number | null>(null);
 
   const params = {
     ...(search ? { search } : {}),
@@ -125,18 +179,6 @@ export default function Inventory() {
     },
   });
 
-  const markSold = useMarkCardSold({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
-        setSoldCardId(null);
-        soldForm.reset();
-        toast({ title: "Card marked as sold" });
-      },
-      onError: () => toast({ title: "Failed to mark card as sold", variant: "destructive" }),
-    },
-  });
-
   const form = useForm<AddCardValues>({
     resolver: zodResolver(addCardSchema),
     defaultValues: {
@@ -146,22 +188,13 @@ export default function Inventory() {
       condition: "near_mint",
       purchase_price: 0,
       market_value: undefined,
+      percent_paid: undefined,
       notes: "",
     },
   });
 
-  const soldForm = useForm<SoldValues>({
-    resolver: zodResolver(soldSchema),
-    defaultValues: { sold_price: 0 },
-  });
-
   function onAddSubmit(values: AddCardValues) {
     createCard.mutate({ data: values });
-  }
-
-  function onSoldSubmit(values: SoldValues) {
-    if (!soldCardId) return;
-    markSold.mutate({ id: soldCardId, data: values });
   }
 
   const displayCards = cards ?? [];
@@ -169,8 +202,8 @@ export default function Inventory() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-card">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-card flex-wrap">
+        <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             data-testid="input-search"
@@ -301,6 +334,15 @@ export default function Inventory() {
                     </FormItem>
                   )} />
                 </div>
+                <FormField control={form.control} name="percent_paid" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>% Paid of Market</FormLabel>
+                    <FormControl>
+                      <Input data-testid="input-percent-paid" type="number" step="0.1" placeholder="e.g. 65 for 65%" {...field} className="bg-background border-border" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
                 <FormField control={form.control} name="notes" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Notes</FormLabel>
@@ -321,34 +363,6 @@ export default function Inventory() {
         </Dialog>
       </div>
 
-      {/* Mark Sold Dialog */}
-      <Dialog open={soldCardId !== null} onOpenChange={(open) => !open && setSoldCardId(null)}>
-        <DialogContent className="bg-card border-border max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Mark Card as Sold</DialogTitle>
-          </DialogHeader>
-          <Form {...soldForm}>
-            <form onSubmit={soldForm.handleSubmit(onSoldSubmit)} className="space-y-4">
-              <FormField control={soldForm.control} name="sold_price" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Sold Price ($)</FormLabel>
-                  <FormControl>
-                    <Input data-testid="input-sold-price" type="number" step="0.01" {...field} className="bg-background border-border" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setSoldCardId(null)}>Cancel</Button>
-                <Button data-testid="button-confirm-sold" type="submit" disabled={markSold.isPending}>
-                  {markSold.isPending ? "Saving..." : "Confirm Sale"}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
       {/* Table */}
       <div className="flex-1 overflow-auto">
         {isLoading ? (
@@ -361,13 +375,15 @@ export default function Inventory() {
         ) : (
           <table className="w-full text-sm border-collapse" data-testid="table-inventory">
             <thead>
-              <tr className="border-b border-border bg-card sticky top-0">
+              <tr className="border-b border-border bg-card sticky top-0 z-10">
                 <th className="text-left px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Card</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Condition</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Cond</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Paid</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Market</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Sold</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">P&amp;L</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">% Paid</th>
                 <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">NFC</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -376,6 +392,19 @@ export default function Inventory() {
               {displayCards.map((card) => {
                 const pl = card.profit_loss ?? 0;
                 const plColor = pl > 0 ? "text-green-400" : pl < 0 ? "text-red-400" : "text-muted-foreground";
+
+                // % paid: use stored value, or derive from purchase/market if available
+                const derivedPctPaid = card.percent_paid != null
+                  ? card.percent_paid
+                  : (card.market_value != null && card.market_value > 0)
+                    ? (card.purchase_price / card.market_value) * 100
+                    : null;
+                const pctPaidColor = derivedPctPaid != null
+                  ? derivedPctPaid <= 70 ? "text-green-400"
+                    : derivedPctPaid <= 90 ? "text-yellow-400"
+                    : "text-muted-foreground"
+                  : "text-muted-foreground";
+
                 return (
                   <tr
                     key={card.id}
@@ -407,11 +436,42 @@ export default function Inventory() {
                     <td className="px-4 py-3 text-right font-mono text-foreground">
                       {card.market_value != null ? `$${card.market_value.toFixed(2)}` : <span className="text-muted-foreground">—</span>}
                     </td>
+
+                    {/* Sold price — click to inline-edit */}
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      {editingSoldId === card.id ? (
+                        <InlineSoldEditor
+                          cardId={card.id}
+                          currentValue={card.sold_price ?? null}
+                          onDone={() => setEditingSoldId(null)}
+                        />
+                      ) : (
+                        <button
+                          data-testid={`cell-sold-${card.id}`}
+                          className="font-mono text-right w-full hover:text-primary transition-colors group-hover:underline decoration-dashed underline-offset-2"
+                          onClick={() => setEditingSoldId(card.id)}
+                          title="Click to edit sold price"
+                        >
+                          {card.sold_price != null
+                            ? <span className="text-foreground">${card.sold_price.toFixed(2)}</span>
+                            : <span className="text-muted-foreground/40">—</span>}
+                        </button>
+                      )}
+                    </td>
+
                     <td className={`px-4 py-3 text-right font-mono ${plColor}`}>
                       {card.profit_loss != null
                         ? `${card.profit_loss >= 0 ? "+" : ""}$${card.profit_loss.toFixed(2)}`
                         : <span className="text-muted-foreground">—</span>}
                     </td>
+
+                    {/* % Paid */}
+                    <td className={`px-4 py-3 text-right font-mono ${pctPaidColor}`} data-testid={`cell-pct-paid-${card.id}`}>
+                      {derivedPctPaid != null
+                        ? `${derivedPctPaid.toFixed(1)}%`
+                        : <span className="text-muted-foreground/40">—</span>}
+                    </td>
+
                     <td className="px-4 py-3 text-center">
                       {card.nfc_written
                         ? <Wifi className="h-4 w-4 text-primary mx-auto" />
@@ -419,17 +479,6 @@ export default function Inventory() {
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
-                        {card.status !== "sold" && (
-                          <Button
-                            data-testid={`button-sell-${card.id}`}
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 text-muted-foreground hover:text-yellow-400"
-                            onClick={() => setSoldCardId(card.id)}
-                          >
-                            <DollarSign className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
                         <Button
                           data-testid={`button-delete-${card.id}`}
                           size="icon"
@@ -450,7 +499,7 @@ export default function Inventory() {
         )}
       </div>
 
-      {/* Footer count */}
+      {/* Footer */}
       <div className="border-t border-border px-6 py-2 bg-card text-xs text-muted-foreground">
         {displayCards.length} card{displayCards.length !== 1 ? "s" : ""} shown
       </div>

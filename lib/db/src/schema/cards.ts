@@ -25,6 +25,7 @@ export const cardsTable = pgTable("cards", {
   shortCode: text("short_code").unique(),
   nfcTagId: integer("nfc_tag_id"),
   nfcWritten: boolean("nfc_written").notNull().default(false),
+  percentPaid: numeric("percent_paid", { precision: 5, scale: 2 }),
   imageUrl: text("image_url"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

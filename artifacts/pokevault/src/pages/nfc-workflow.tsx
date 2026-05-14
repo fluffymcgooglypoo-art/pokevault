@@ -324,11 +324,23 @@ export default function NfcWorkflow() {
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {acr.status === "unavailable"
                           ? "WebUSB is not supported in this browser. Use Chrome or Edge."
-                          : "Connect your ACR122U, then click Connect Reader."}
+                          : acr.isInIframe
+                          ? "USB access is blocked inside the Replit preview. Open the app in its own browser tab."
+                          : "Make sure the ACR122U is plugged in, then click Connect Reader. First-time use requires granting permission."}
                       </p>
                     </div>
                   </div>
-                  {acr.status === "not_connected" && (
+                  {acr.status === "not_connected" && acr.isInIframe ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(window.location.href, "_blank")}
+                      className="shrink-0 border-border text-muted-foreground hover:text-foreground whitespace-nowrap"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                      Open in New Tab
+                    </Button>
+                  ) : acr.status === "not_connected" ? (
                     <Button
                       size="sm"
                       variant="outline"
@@ -338,7 +350,7 @@ export default function NfcWorkflow() {
                       <Usb className="h-3.5 w-3.5 mr-1.5" />
                       Connect Reader
                     </Button>
-                  )}
+                  ) : null}
                 </div>
               )}
 

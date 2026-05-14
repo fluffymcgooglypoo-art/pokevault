@@ -44,6 +44,7 @@ export interface UseAcr122uReturn {
   status: ReaderStatus;
   deviceName: string | null;
   errorMessage: string | null;
+  isInIframe: boolean;
   connect: () => Promise<void>;
   readUid: (signal: AbortSignal) => Promise<string>;
   writeNdef: (url: string) => Promise<void>;
@@ -293,5 +294,8 @@ export function useAcr122u(): UseAcr122uReturn {
     }
   }, [openDevice]);
 
-  return { status, deviceName, errorMessage, connect, readUid, writeNdef };
+  const isInIframe =
+    typeof window !== "undefined" && window.self !== window.top;
+
+  return { status, deviceName, errorMessage, isInIframe, connect, readUid, writeNdef };
 }

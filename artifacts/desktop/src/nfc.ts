@@ -1,9 +1,20 @@
 import type { IpcMain, BrowserWindow, IpcMainInvokeEvent } from "electron";
 
-// nfc-pcsc ships its own types; silence the missing-declaration warning if
-// the package types aren't available on this machine.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const NFC = require("nfc-pcsc");
+// Load nfc-pcsc gracefully — the native pcsclite binary may not be available
+// on all machines (e.g. no PC/SC stack installed, or packaging issue).
+// If it fails the app still works; NFC features just show "unavailable".
+let NFC: (new () => NfcInstance) | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  NFC = require("nfc-pcsc");
+} catch {
+  console.warn("[nfc] nfc-pcsc unavailable — NFC features disabled");
+}
+
+interface NfcInstance {
+  on(event: "reader", cb: (reader: NfcReader) => void): void;
+  on(event: "error", cb: (err: Error) => void): void;
+}
 
 interface NfcCard {
   uid: string;
@@ -23,16 +34,30 @@ interface NfcReader {
 interface NfcStatus {
   connected: boolean;
   readerName?: string;
+  available: boolean;
 }
 
 export function setupNfc(
   ipcMain: IpcMain,
   getWindow: () => BrowserWindow | null
 ): void {
+  // Always register IPC handlers so the renderer doesn't hang waiting for a
+  // response — just report NFC as unavailable if the native module failed.
+  if (!NFC) {
+    ipcMain.handle("nfc:get-status", (): NfcStatus => ({
+      connected: false,
+      available: false,
+    }));
+    ipcMain.handle("nfc:write-ndef", async (): Promise<void> => {
+      throw new Error("NFC not available on this machine");
+    });
+    return;
+  }
+
   const nfc = new NFC();
 
   let currentReader: NfcReader | null = null;
-  let nfcStatus: NfcStatus = { connected: false };
+  let nfcStatus: NfcStatus = { connected: false, available: true };
 
   function send(channel: string, data: unknown): void {
     const w = getWindow();
@@ -43,7 +68,7 @@ export function setupNfc(
 
   nfc.on("reader", (reader: NfcReader) => {
     currentReader = reader;
-    nfcStatus = { connected: true, readerName: reader.name };
+    nfcStatus = { connected: true, readerName: reader.name, available: true };
     send("nfc:reader-connected", { name: reader.name });
 
     reader.on("card", (card: NfcCard) => {
@@ -56,7 +81,7 @@ export function setupNfc(
 
     reader.on("end", () => {
       if (currentReader === reader) currentReader = null;
-      nfcStatus = { connected: false };
+      nfcStatus = { connected: false, available: true };
       send("nfc:reader-disconnected", {});
     });
   });
@@ -65,8 +90,6 @@ export function setupNfc(
     console.error("[nfc-pcsc]", err.message);
     send("nfc:error", { message: err.message });
   });
-
-  // ── IPC handlers ────────────────────────────────────────────────────────────
 
   ipcMain.handle("nfc:get-status", (): NfcStatus => nfcStatus);
 
@@ -87,15 +110,12 @@ export function setupNfc(
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatUid(raw: string): string {
-  // nfc-pcsc typically returns a plain hex string like "04a3f21b8c4081"
-  // Normalise to uppercase colon-separated: "04:A3:F2:1B:8C:40:81"
   const hex = raw.replace(/[^0-9a-fA-F]/g, "");
   const pairs = hex.match(/.{1,2}/g) ?? [];
   return pairs.map((b) => b.toUpperCase()).join(":");
 }
 
 function buildNdefBytes(url: string): number[] {
-  // URI identifier codes per RFC 5234 / NFC Forum URI Record Type Definition
   const prefixes: [string, number][] = [
     ["https://www.", 0x02],
     ["http://www.",  0x01],
@@ -115,16 +135,14 @@ function buildNdefBytes(url: string): number[] {
   const uriBytes = [...Buffer.from(uriStr, "utf8")];
   const payload = [uriCode, ...uriBytes];
 
-  // NDEF short record: MB=1 ME=1 SR=1 TNF=Well-Known(0x01)
   const ndefRecord = [
     0xd1,
     0x01,
     payload.length,
-    0x55, // type = 'U'
+    0x55,
     ...payload,
   ];
 
-  // Wrap in NDEF Message TLV and pad to 4-byte page boundary
   const msg: number[] = [0x03, ndefRecord.length, ...ndefRecord, 0xfe];
   while (msg.length % 4 !== 0) msg.push(0x00);
   return msg;

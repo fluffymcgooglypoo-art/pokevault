@@ -39,6 +39,12 @@ jobs:
           BASE_PATH: "/"
           NODE_ENV: production
 
+      - name: Rebuild native modules for Electron
+        run: pnpm --filter @workspace/desktop exec electron-rebuild --arch x64
+        env:
+          npm_config_platform: win32
+          npm_config_arch: x64
+
       - name: Build Electron main process
         run: pnpm --filter @workspace/desktop run build
 

@@ -1,4 +1,3 @@
-import React from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -6,23 +5,21 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
+import Inventory from "@/pages/inventory";
+import CardDetail from "@/pages/card-detail";
+import NfcWorkflow from "@/pages/nfc-workflow";
+import Overlay from "@/pages/overlay";
+import Settings from "@/pages/settings";
 
 const queryClient = new QueryClient();
-
-// Placeholder components for pages we'll build fully soon
-const Inventory = () => <div className="p-8">Inventory Page Placeholder</div>;
-const CardDetail = () => <div className="p-8">Card Detail Page Placeholder</div>;
-const NfcWorkflow = () => <div className="p-8">NFC Workflow Page Placeholder</div>;
-const Settings = () => <div className="p-8">Settings Page Placeholder</div>;
-const Overlay = () => <div className="p-8 text-white">Overlay View (OBS) Placeholder</div>;
 
 function AppRouter() {
   return (
     <Switch>
-      {/* OBS Overlay has no layout */}
+      {/* OBS Overlay — no layout, transparent background */}
       <Route path="/overlay/:shortCode" component={Overlay} />
-      
-      {/* App routes with layout */}
+
+      {/* App routes with sidebar layout */}
       <Route>
         <Layout>
           <Switch>

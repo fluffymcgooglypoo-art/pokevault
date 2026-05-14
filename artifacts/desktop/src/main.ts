@@ -5,10 +5,19 @@ import { setupNfc } from "./nfc";
 
 const isDev = process.env["NODE_ENV"] !== "production";
 
+// When start.bat sets ELECTRON_USE_BUILT_RENDERER=1, load from the locally
+// built files served by Express rather than the Vite dev server.
+const useBuiltRenderer =
+  !app.isPackaged &&
+  process.env["ELECTRON_USE_BUILT_RENDERER"] === "1";
+
+// Treat packaged builds and "built renderer" runs the same way: serve via Express.
+const serveFromExpress = app.isPackaged || useBuiltRenderer;
+
 // Port the Express API server will listen on inside Electron.
 // Defaults to 8082 to avoid clashing with the Replit dev workflow (8080).
 const API_PORT = Number(process.env["ELECTRON_API_PORT"] ?? 8082);
-// Port the Vite dev server is expected on (only used in dev mode).
+// Port the Vite dev server is expected on (only used in pure dev mode).
 const VITE_PORT = Number(process.env["ELECTRON_VITE_PORT"] ?? 18666);
 
 let apiProcess: ChildProcess | null = null;
@@ -101,18 +110,20 @@ async function createWindow(): Promise<void> {
     win = null;
   });
 
-  if (isDev) {
-    // In dev the Vite server and API server are already running (Replit workflows
-    // or started manually). Electron just opens the window.
+  if (serveFromExpress) {
+    // Packaged app OR start.bat "built renderer" mode:
+    // spin up the Express server which also serves the built React files.
+    startApiServer();
+    await pollUntilReady(`http://localhost:${API_PORT}/api/health`);
+    await win.loadURL(`http://localhost:${API_PORT}`);
+  } else {
+    // Pure dev mode: Vite dev server and API server are already running
+    // (Replit workflows or started manually in separate terminals).
     await pollUntilReady(`http://localhost:${VITE_PORT}`, 30_000);
     await win.loadURL(`http://localhost:${VITE_PORT}`);
     if (process.env["ELECTRON_DEVTOOLS"] === "1") {
       win.webContents.openDevTools();
     }
-  } else {
-    startApiServer();
-    await pollUntilReady(`http://localhost:${API_PORT}/api/health`);
-    await win.loadURL(`http://localhost:${API_PORT}`);
   }
 }
 

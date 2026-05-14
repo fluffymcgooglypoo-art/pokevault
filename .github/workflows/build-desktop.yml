@@ -1,0 +1,65 @@
+name: Build Desktop App
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # lets you trigger a build manually from the GitHub website
+
+permissions:
+  contents: write   # needed to upload the release asset
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build API server
+        run: pnpm --filter @workspace/api-server run build
+
+      - name: Build frontend (production, root base path for Electron)
+        run: pnpm --filter @workspace/pokevault run build
+        env:
+          PORT: "3000"
+          BASE_PATH: "/"
+          NODE_ENV: production
+
+      - name: Build Electron main process
+        run: pnpm --filter @workspace/desktop run build
+
+      - name: Package Windows installer
+        run: pnpm --filter @workspace/desktop exec electron-builder --win --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer as release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokeVault-Windows-Installer
+          path: artifacts/desktop/release/*.exe
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "PokeVault Build ${{ github.run_number }}"
+          body: "Windows installer — automatically built from latest code."
+          files: artifacts/desktop/release/*.exe
+          make_latest: true

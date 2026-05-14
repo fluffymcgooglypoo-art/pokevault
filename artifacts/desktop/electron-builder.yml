@@ -38,7 +38,6 @@ win:
     - target: nsis
       arch:
         - x64
-  icon: build-resources/icon.ico
 
 mac:
   target:
@@ -46,14 +45,12 @@ mac:
       arch:
         - x64
         - arm64
-  icon: build-resources/icon.icns
 
 linux:
   target:
     - target: AppImage
       arch:
         - x64
-  icon: build-resources/icon.png
   category: Utility
 
 nsis:

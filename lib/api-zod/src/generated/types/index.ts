@@ -22,6 +22,7 @@ export * from "./listCardsOrder";
 export * from "./listCardsParams";
 export * from "./listCardsSort";
 export * from "./listCardsStatus";
+export * from "./lookupCardByUidParams";
 export * from "./nfcTag";
 export * from "./nfcTagInput";
 export * from "./nfcTagUpdate";

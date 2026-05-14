@@ -285,3 +285,10 @@ export const ListCardsOrder = {
   asc: "asc",
   desc: "desc",
 } as const;
+
+export type LookupCardByUidParams = {
+  /**
+   * NFC tag UID (spaces and case are normalized)
+   */
+  uid: string;
+};

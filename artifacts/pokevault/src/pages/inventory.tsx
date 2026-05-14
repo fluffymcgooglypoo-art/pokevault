@@ -1,13 +1,13 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   useListCards,
   getListCardsQueryKey,
   useCreateCard,
   useDeleteCard,
-  useMarkCardSold,
   useUpdateCard,
 } from "@workspace/api-client-react";
+import { ScanToSellDialog } from "@/components/scan-to-sell-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod/v4";
-import { Plus, Search, ArrowUpDown, Wifi, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, Search, ArrowUpDown, Wifi, ChevronRight, Trash2, ScanLine } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CONDITIONS: Record<string, string> = {
@@ -135,7 +135,22 @@ export default function Inventory() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [sort, setSort] = useState("created_at");
   const [addOpen, setAddOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const [editingSoldId, setEditingSoldId] = useState<number | null>(null);
+
+  // Keyboard shortcut: S opens scan-to-sell (when not typing in an input)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        setScanOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const params = {
     ...(search ? { search } : {}),
@@ -245,9 +260,21 @@ export default function Inventory() {
           </SelectContent>
         </Select>
 
+        <Button
+          data-testid="button-scan-to-sell"
+          variant="outline"
+          className="ml-auto border-primary/50 text-primary hover:bg-primary/10"
+          onClick={() => setScanOpen(true)}
+          title="Scan to Sell (S)"
+        >
+          <ScanLine className="h-4 w-4 mr-2" />
+          Scan to Sell
+          <kbd className="ml-2 text-[9px] font-mono bg-primary/10 border border-primary/20 px-1 py-0.5 rounded-none opacity-70">S</kbd>
+        </Button>
+
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-card" className="ml-auto">
+            <Button data-testid="button-add-card">
               <Plus className="h-4 w-4 mr-2" />
               Add Card
             </Button>
@@ -494,6 +521,8 @@ export default function Inventory() {
       <div className="border-t border-border px-6 py-2 bg-card text-xs text-muted-foreground">
         {displayCards.length} card{displayCards.length !== 1 ? "s" : ""} shown
       </div>
+
+      <ScanToSellDialog open={scanOpen} onOpenChange={setScanOpen} />
     </div>
   );
 }

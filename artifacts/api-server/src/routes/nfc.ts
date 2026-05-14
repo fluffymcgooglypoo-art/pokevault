@@ -140,6 +140,70 @@ router.patch("/nfc/tags/:tagId", async (req, res): Promise<void> => {
   res.json(nfcTagToResponse(tag));
 });
 
+router.get("/nfc/lookup", async (req, res): Promise<void> => {
+  const raw = typeof req.query.uid === "string" ? req.query.uid : "";
+  if (!raw.trim()) {
+    res.status(400).json({ error: "uid query param is required" });
+    return;
+  }
+  // Normalize: strip spaces, uppercase — handles "53 D9 E7 E3 52 00 01" and "53D9E7E352001" equally
+  const uid = raw.replace(/\s+/g, "").toUpperCase();
+
+  const [tag] = await db
+    .select()
+    .from(nfcTagsTable)
+    .where(eq(nfcTagsTable.tagUid, uid));
+
+  if (!tag) {
+    res.status(404).json({ error: "No card found for this NFC UID" });
+    return;
+  }
+
+  const [card] = await db
+    .select()
+    .from(cardsTable)
+    .where(eq(cardsTable.id, tag.cardId));
+
+  if (!card) {
+    res.status(404).json({ error: "Card not found" });
+    return;
+  }
+
+  const purchasePrice = parseFloat(card.purchasePrice ?? "0");
+  const marketValue = card.marketValue != null ? parseFloat(card.marketValue) : null;
+  const soldPrice = card.soldPrice != null ? parseFloat(card.soldPrice) : null;
+  const percentPaid = card.percentPaid != null ? parseFloat(card.percentPaid) : null;
+  let profitLoss: number | null = null;
+  if (card.status === "sold" && soldPrice != null) {
+    profitLoss = soldPrice - purchasePrice;
+  } else if (marketValue != null) {
+    profitLoss = marketValue - purchasePrice;
+  }
+
+  res.json({
+    id: card.id,
+    name: card.name,
+    set_name: card.setName ?? null,
+    card_number: card.cardNumber ?? null,
+    condition: card.condition,
+    status: card.status,
+    purchase_price: purchasePrice,
+    market_value: marketValue,
+    sold_price: soldPrice,
+    profit_loss: profitLoss,
+    percent_paid: percentPaid,
+    tcgplayer_url: card.tcgplayerUrl ?? null,
+    ebay_url: card.ebayUrl ?? null,
+    short_code: card.shortCode ?? null,
+    nfc_tag_id: card.nfcTagId ?? null,
+    nfc_written: card.nfcWritten,
+    image_url: card.imageUrl ?? null,
+    notes: card.notes ?? null,
+    created_at: card.createdAt.toISOString(),
+    updated_at: card.updatedAt.toISOString(),
+  });
+});
+
 router.get("/nfc/resolve/:shortCode", async (req, res): Promise<void> => {
   const params = ResolveShortLinkParams.safeParse(req.params);
   if (!params.success) {

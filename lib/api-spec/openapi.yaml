@@ -250,6 +250,28 @@ paths:
               schema:
                 $ref: "#/components/schemas/NfcTag"
 
+  /nfc/lookup:
+    get:
+      operationId: lookupCardByUid
+      tags: [nfc]
+      summary: Look up a card by NFC tag UID
+      parameters:
+        - name: uid
+          in: query
+          required: true
+          schema:
+            type: string
+          description: NFC tag UID (spaces and case are normalized)
+      responses:
+        "200":
+          description: Card associated with the NFC UID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Card"
+        "404":
+          description: No card found for this UID
+
   /nfc/resolve/{shortCode}:
     get:
       operationId: resolveShortLink

@@ -303,6 +303,45 @@ export const UpdateNfcTagResponse = zod.object({
 });
 
 /**
+ * @summary Look up a card by NFC tag UID
+ */
+export const LookupCardByUidQueryParams = zod.object({
+  uid: zod.coerce
+    .string()
+    .describe("NFC tag UID (spaces and case are normalized)"),
+});
+
+export const LookupCardByUidResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  set_name: zod.string().nullish(),
+  card_number: zod.string().nullish(),
+  condition: zod.enum([
+    "mint",
+    "near_mint",
+    "lightly_played",
+    "moderately_played",
+    "heavily_played",
+    "damaged",
+  ]),
+  status: zod.enum(["in_collection", "listed", "sold"]),
+  purchase_price: zod.number(),
+  market_value: zod.number().nullish(),
+  sold_price: zod.number().nullish(),
+  profit_loss: zod.number().nullish(),
+  tcgplayer_url: zod.string().nullish(),
+  ebay_url: zod.string().nullish(),
+  short_code: zod.string().nullish(),
+  nfc_tag_id: zod.number().nullish(),
+  nfc_written: zod.boolean().optional(),
+  percent_paid: zod.number().nullish(),
+  image_url: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  created_at: zod.string(),
+  updated_at: zod.string(),
+});
+
+/**
  * @summary Resolve a short link to a card
  */
 export const ResolveShortLinkParams = zod.object({

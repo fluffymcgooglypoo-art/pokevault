@@ -24,6 +24,7 @@ import type {
   DashboardSummary,
   HealthStatus,
   ListCardsParams,
+  LookupCardByUidParams,
   NfcTag,
   NfcTagInput,
   NfcTagUpdate,
@@ -966,6 +967,100 @@ export const useUpdateNfcTag = <
 > => {
   return useMutation(getUpdateNfcTagMutationOptions(options));
 };
+
+/**
+ * @summary Look up a card by NFC tag UID
+ */
+export const getLookupCardByUidUrl = (params: LookupCardByUidParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/nfc/lookup?${stringifiedParams}`
+    : `/api/nfc/lookup`;
+};
+
+export const lookupCardByUid = async (
+  params: LookupCardByUidParams,
+  options?: RequestInit,
+): Promise<Card> => {
+  return customFetch<Card>(getLookupCardByUidUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getLookupCardByUidQueryKey = (params?: LookupCardByUidParams) => {
+  return [`/api/nfc/lookup`, ...(params ? [params] : [])] as const;
+};
+
+export const getLookupCardByUidQueryOptions = <
+  TData = Awaited<ReturnType<typeof lookupCardByUid>>,
+  TError = ErrorType<void>,
+>(
+  params: LookupCardByUidParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupCardByUid>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getLookupCardByUidQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupCardByUid>>> = ({
+    signal,
+  }) => lookupCardByUid(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof lookupCardByUid>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type LookupCardByUidQueryResult = NonNullable<
+  Awaited<ReturnType<typeof lookupCardByUid>>
+>;
+export type LookupCardByUidQueryError = ErrorType<void>;
+
+/**
+ * @summary Look up a card by NFC tag UID
+ */
+
+export function useLookupCardByUid<
+  TData = Awaited<ReturnType<typeof lookupCardByUid>>,
+  TError = ErrorType<void>,
+>(
+  params: LookupCardByUidParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof lookupCardByUid>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getLookupCardByUidQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Resolve a short link to a card

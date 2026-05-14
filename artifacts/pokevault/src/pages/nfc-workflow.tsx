@@ -316,41 +316,69 @@ export default function NfcWorkflow() {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-between gap-3 p-3 border border-red-500/30 bg-red-500/5">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-red-400">NFC reader not detected</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {acr.status === "unavailable"
-                          ? "WebUSB is not supported in this browser. Use Chrome or Edge."
-                          : acr.isInIframe
-                          ? "USB access is blocked inside the Replit preview. Open the app in its own browser tab."
-                          : "Make sure the ACR122U is plugged in, then click Connect Reader. First-time use requires granting permission."}
+                <div className="space-y-0">
+                  <div className="flex items-center justify-between gap-3 p-3 border border-red-500/30 bg-red-500/5">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-red-400">NFC reader not detected</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {acr.status === "unavailable"
+                            ? "WebUSB is not supported in this browser. Use Chrome or Edge."
+                            : acr.isInIframe
+                            ? "USB access is blocked inside the Replit preview — open the app in its own browser tab."
+                            : acr.needsDriverSetup
+                            ? "Your ACR122U didn't appear in Chrome's USB list. Windows is using the wrong driver — see fix below."
+                            : "Make sure the ACR122U is plugged in, then click Connect Reader."}
+                        </p>
+                      </div>
+                    </div>
+                    {acr.status === "not_connected" && acr.isInIframe ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(window.location.href, "_blank")}
+                        className="shrink-0 border-border text-muted-foreground hover:text-foreground whitespace-nowrap"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                        Open in New Tab
+                      </Button>
+                    ) : acr.status === "not_connected" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={acr.connect}
+                        className="shrink-0 border-border text-muted-foreground hover:text-foreground"
+                      >
+                        <Usb className="h-3.5 w-3.5 mr-1.5" />
+                        Connect Reader
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  {/* Windows driver setup guide */}
+                  {acr.needsDriverSetup && (
+                    <div className="border border-t-0 border-border bg-background p-4 space-y-3 text-xs">
+                      <p className="font-semibold text-foreground">Fix: Install WinUSB driver with Zadig (one-time, ~2 min)</p>
+                      <ol className="space-y-2 text-muted-foreground list-none">
+                        {[
+                          <>Download <a href="https://zadig.akeo.ie" target="_blank" rel="noopener noreferrer" className="text-primary underline">Zadig</a> and run it as Administrator</>,
+                          <>In Zadig: Options → <span className="font-mono text-foreground">List All Devices</span></>,
+                          <>Select <span className="font-mono text-foreground">ACR122U PICC Interface</span> from the dropdown</>,
+                          <>Set the driver to <span className="font-mono text-foreground">WinUSB</span>, then click <span className="font-mono text-foreground">Replace Driver</span></>,
+                          <>Unplug and replug your ACR122U, then click <span className="font-mono text-foreground">Connect Reader</span> above</>,
+                        ].map((step, i) => (
+                          <li key={i} className="flex gap-2.5">
+                            <span className="shrink-0 w-4 h-4 flex items-center justify-center border border-border text-[10px] font-bold text-muted-foreground mt-0.5">{i + 1}</span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                      <p className="text-muted-foreground/60 pt-1 border-t border-border">
+                        To revert: open Device Manager → Universal Serial Bus devices → ACR122U → Update driver → Browse → Let me pick → Microsoft Usbccid Smartcard Reader.
                       </p>
                     </div>
-                  </div>
-                  {acr.status === "not_connected" && acr.isInIframe ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => window.open(window.location.href, "_blank")}
-                      className="shrink-0 border-border text-muted-foreground hover:text-foreground whitespace-nowrap"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                      Open in New Tab
-                    </Button>
-                  ) : acr.status === "not_connected" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={acr.connect}
-                      className="shrink-0 border-border text-muted-foreground hover:text-foreground"
-                    >
-                      <Usb className="h-3.5 w-3.5 mr-1.5" />
-                      Connect Reader
-                    </Button>
-                  ) : null}
+                  )}
                 </div>
               )}
 

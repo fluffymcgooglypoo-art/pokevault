@@ -45,6 +45,7 @@ export interface UseAcr122uReturn {
   deviceName: string | null;
   errorMessage: string | null;
   isInIframe: boolean;
+  needsDriverSetup: boolean;
   connect: () => Promise<void>;
   readUid: (signal: AbortSignal) => Promise<string>;
   writeNdef: (url: string) => Promise<void>;
@@ -279,16 +280,24 @@ export function useAcr122u(): UseAcr122uReturn {
     [sendApdu]
   );
 
+  const [needsDriverSetup, setNeedsDriverSetup] = useState(false);
+
   const connect = useCallback(async () => {
     const usb = (navigator as unknown as { usb?: USB }).usb;
     if (!usb) return;
+    setNeedsDriverSetup(false);
     try {
       const device = await usb.requestDevice({
         filters: [{ vendorId: VENDOR_ID, productId: PRODUCT_ID }],
       });
       await openDevice(device);
     } catch (err) {
-      if ((err as Error)?.name === "NotFoundError") return; // user cancelled dialog
+      if ((err as Error)?.name === "NotFoundError") {
+        // Dialog appeared but no matching device was listed — almost always
+        // means Windows is using the CCID class driver instead of WinUSB.
+        setNeedsDriverSetup(true);
+        return;
+      }
       setStatus("error");
       setErrorMessage(err instanceof Error ? err.message : "Connection failed");
     }
@@ -297,5 +306,5 @@ export function useAcr122u(): UseAcr122uReturn {
   const isInIframe =
     typeof window !== "undefined" && window.self !== window.top;
 
-  return { status, deviceName, errorMessage, isInIframe, connect, readUid, writeNdef };
+  return { status, deviceName, errorMessage, isInIframe, needsDriverSetup, connect, readUid, writeNdef };
 }

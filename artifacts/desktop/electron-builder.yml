@@ -1,0 +1,63 @@
+appId: com.pokevault.desktop
+productName: PokeVault
+copyright: PokeVault
+
+directories:
+  output: release
+  buildResources: build-resources
+
+# Main process files (compiled by build.mjs)
+files:
+  - dist/**
+  - package.json
+  - "!node_modules"
+  - node_modules/nfc-pcsc/**
+  - node_modules/pcsclite/**
+  - node_modules/bindings/**
+  - node_modules/file-uri-to-path/**
+
+# Bundle the pre-built API server and renderer as app resources so the main
+# process can spawn the API server and serve the frontend without bundling
+# Node.js internals into the Electron binary.
+extraResources:
+  - from: ../api-server/dist
+    to: api-server
+    filter:
+      - "**/*"
+  - from: ../pokevault/dist/public
+    to: renderer
+    filter:
+      - "**/*"
+
+# Rebuild native modules (nfc-pcsc → pcsclite) against the packaged
+# Electron version.
+npmRebuild: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build-resources/icon.ico
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: build-resources/icon.icns
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  icon: build-resources/icon.png
+  category: Utility
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

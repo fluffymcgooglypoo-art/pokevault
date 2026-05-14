@@ -1,5 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
+// ── Electron preload API (injected by src/preload.ts) ───────────────────────
+interface ElectronNfc {
+  onReaderConnected:    (cb: (d: unknown) => void) => void;
+  offReaderConnected:   (cb: (d: unknown) => void) => void;
+  onReaderDisconnected: (cb: (d: unknown) => void) => void;
+  offReaderDisconnected:(cb: (d: unknown) => void) => void;
+  onCard:   (cb: (d: unknown) => void) => void;
+  offCard:  (cb: (d: unknown) => void) => void;
+  onError:  (cb: (d: unknown) => void) => void;
+  offError: (cb: (d: unknown) => void) => void;
+  writeNdef: (url: string) => Promise<void>;
+  getStatus: () => Promise<{ connected: boolean; readerName?: string }>;
+}
+interface ElectronApi {
+  isElectron: boolean;
+  apiBaseUrl: string;
+  nfc: ElectronNfc;
+}
+function getElectronApi(): ElectronApi | undefined {
+  return (window as unknown as { electronApi?: ElectronApi }).electronApi;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 // ── Minimal WebUSB type declarations ────────────────────────────────────────
 interface USBEndpoint {
   endpointNumber: number;
@@ -76,6 +99,11 @@ export function useAcr122u(): UseAcr122uReturn {
   const [deviceName, setDeviceName] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Resolved once at mount; window.electronApi is injected by the preload
+  // before the renderer script runs, so it is safe to read here.
+  const electronApi = getElectronApi();
+  const isElectron = !!electronApi?.isElectron;
+
   const deviceRef = useRef<USBDevice | null>(null);
   const outEpRef = useRef<number>(2);
   const inEpRef = useRef<number>(2);
@@ -118,7 +146,50 @@ export function useAcr122u(): UseAcr122uReturn {
     }
   }, []);
 
+  // ── Electron IPC path ────────────────────────────────────────────────────
   useEffect(() => {
+    if (!isElectron || !electronApi) return;
+
+    // Prime status from the main process synchronously-ish
+    electronApi.nfc.getStatus().then((s) => {
+      if (s.connected) {
+        setStatus("ready");
+        setDeviceName(s.readerName ?? "ACR122U");
+      } else {
+        setStatus("not_connected");
+      }
+    }).catch(() => setStatus("not_connected"));
+
+    const onConnected = (d: unknown) => {
+      const { name } = d as { name: string };
+      setStatus("ready");
+      setDeviceName(name ?? "ACR122U");
+      setErrorMessage(null);
+    };
+    const onDisconnected = () => {
+      setStatus("not_connected");
+      setDeviceName(null);
+    };
+    const onError = (d: unknown) => {
+      const { message } = d as { message: string };
+      setStatus("error");
+      setErrorMessage(message ?? "NFC error");
+    };
+
+    electronApi.nfc.onReaderConnected(onConnected);
+    electronApi.nfc.onReaderDisconnected(onDisconnected);
+    electronApi.nfc.onError(onError);
+    return () => {
+      electronApi.nfc.offReaderConnected(onConnected);
+      electronApi.nfc.offReaderDisconnected(onDisconnected);
+      electronApi.nfc.offError(onError);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isElectron]);
+
+  // ── WebUSB path ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isElectron) return; // handled above
     const usb = (navigator as unknown as { usb?: USB }).usb;
     if (!usb) {
       setStatus("unavailable");
@@ -202,6 +273,22 @@ export function useAcr122u(): UseAcr122uReturn {
   // ── readUid — polls until tag present or aborted ─────────────────────────
   const readUid = useCallback(
     async (signal: AbortSignal): Promise<string> => {
+      // ── Electron: wait for the next card IPC event ──────────────────────
+      if (isElectron && electronApi) {
+        return new Promise<string>((resolve, reject) => {
+          const onCard = (d: unknown) => {
+            const { uid } = d as { uid: string };
+            electronApi.nfc.offCard(onCard);
+            resolve(uid);
+          };
+          electronApi.nfc.onCard(onCard);
+          signal.addEventListener("abort", () => {
+            electronApi.nfc.offCard(onCard);
+            reject(new DOMException("Scan aborted", "AbortError"));
+          });
+        });
+      }
+      // ── WebUSB: poll via APDU ────────────────────────────────────────────
       while (!signal.aborted) {
         try {
           const resp = await sendApdu([0xff, 0xca, 0x00, 0x00, 0x00]);
@@ -230,6 +317,12 @@ export function useAcr122u(): UseAcr122uReturn {
   // ── writeNdef — writes NDEF URL record to NTAG213 ────────────────────────
   const writeNdef = useCallback(
     async (url: string): Promise<void> => {
+      // ── Electron: delegate to main process via IPC ───────────────────────
+      if (isElectron && electronApi) {
+        await electronApi.nfc.writeNdef(url);
+        return;
+      }
+      // ── WebUSB: write pages via APDU ─────────────────────────────────────
       const prefixes: [string, number][] = [
         ["https://www.", 0x02],
         ["http://www.",  0x01],
@@ -283,6 +376,8 @@ export function useAcr122u(): UseAcr122uReturn {
   const [needsDriverSetup, setNeedsDriverSetup] = useState(false);
 
   const connect = useCallback(async () => {
+    // In Electron, nfc-pcsc auto-detects readers — no user gesture needed.
+    if (isElectron) return;
     const usb = (navigator as unknown as { usb?: USB }).usb;
     if (!usb) return;
     setNeedsDriverSetup(false);

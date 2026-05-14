@@ -22,6 +22,7 @@ A desktop-first Pokémon card inventory and NFC management web app for serious t
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 - Short codes: nanoid
+- Desktop: Electron 36 + nfc-pcsc (PC/SC, no driver swap needed)
 
 ## Where things live
 
@@ -40,6 +41,7 @@ A desktop-first Pokémon card inventory and NFC management web app for serious t
   - `overlay.ts` — OBS overlay data endpoint
   - `dashboard.ts` — summary, recent activity, top cards
 - `artifacts/pokevault/src/` — React frontend
+- `artifacts/desktop/` — Electron main process, preload, nfc-pcsc integration
 
 ## Architecture decisions
 
@@ -47,7 +49,10 @@ A desktop-first Pokémon card inventory and NFC management web app for serious t
 - Short codes generated with nanoid(8) — stored on both `cards` and `nfc_tags` tables
 - Profit/loss computed server-side: unrealized uses marketValue, realized uses soldPrice
 - OBS overlay route (`/overlay/:shortCode`) has transparent background, no app chrome — designed as a browser source
-- Web NFC API (`NDEFReader`) used for tag writing; graceful degradation when unavailable
+- NFC: WebUSB (ACR122U) in browser; nfc-pcsc (PC/SC) in Electron — `use-acr122u.ts` auto-selects based on `window.electronApi.isElectron`
+- Electron API port: 8082 (avoids clash with Replit dev workflow port 8080)
+- In Electron dev the main window loads from the Vite dev server; `preload.ts` sets `apiBaseUrl` so `setBaseUrl()` in `main.tsx` routes all `/api/…` fetches to `localhost:8082`
+- In Electron production the Express server also serves the built React static files (`ELECTRON=1`, `RENDERER_PATH=…`)
 
 ## Product
 
@@ -63,12 +68,62 @@ A desktop-first Pokémon card inventory and NFC management web app for serious t
 - Clean business style, fast workflow focused
 - Not dependent on Google Sheets
 
+## Electron Desktop App
+
+### Development workflow (local machine, not Replit)
+
+Prerequisites: Node.js 18+, pnpm, PostgreSQL running with `DATABASE_URL` set.
+
+```bash
+# 1 — Install everything
+pnpm install
+
+# 2 — Build the API server (only needed once, or after API changes)
+pnpm --filter @workspace/api-server run build
+
+# 3 — In one terminal: start the API server on port 8082
+PORT=8082 DATABASE_URL=<your-db-url> pnpm --filter @workspace/api-server run start
+
+# 4 — In another terminal: start the Vite dev server
+pnpm --filter @workspace/pokevault run dev
+
+# 5 — In a third terminal: build + launch Electron
+pnpm --filter @workspace/desktop run dev
+```
+
+The Electron window will open pointing to the Vite dev server. NFC reads/writes use
+the system PC/SC stack (no Zadig or driver swap required).
+
+### Production build (Windows installer)
+
+```bash
+# Build everything
+pnpm --filter @workspace/api-server run build
+BASE_PATH=/ pnpm --filter @workspace/pokevault run build
+pnpm --filter @workspace/desktop run dist
+```
+
+The `.exe` installer lands in `artifacts/desktop/release/`.  The packaged app
+bundles the built API server and renderer as resources and spawns the API server
+on startup.  Node.js must be installed on the target machine (or bundle it via
+`extraResources` in `electron-builder.yml`).
+
+### NFC in Electron vs browser
+
+| | Browser (WebUSB) | Electron (PC/SC) |
+|---|---|---|
+| Driver | Requires Zadig/WinUSB swap | Uses existing Windows Smart Card stack |
+| Auto-detect | Manual "Connect Reader" click | Automatic on plug-in |
+| Library | Built-in WebUSB hook | `nfc-pcsc` via `ipcMain` |
+| Hook | `use-acr122u.ts` (WebUSB path) | `use-acr122u.ts` (Electron IPC path) |
+
 ## Gotchas
 
 - Always run codegen after editing `openapi.yaml`: `pnpm --filter @workspace/api-spec run codegen`
 - Never call `pnpm dev` at workspace root — use workflows or `--filter` commands
 - The `nanoid` dependency is in `artifacts/api-server/` — must be a `dependencies` entry (not devDependencies)
 - Overlay page must keep `body { background: transparent }` for OBS chroma key / browser source use
+- `artifacts/desktop` is not a Replit web artifact — it has no preview path. Build and run it locally.
 
 ## Pointers
 

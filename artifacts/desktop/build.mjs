@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+import { copyFile, mkdir } from "fs/promises";
 
 const base = {
   bundle: true,
@@ -7,6 +8,8 @@ const base = {
   format: "cjs",
   sourcemap: true,
 };
+
+await mkdir("dist", { recursive: true });
 
 await Promise.all([
   build({
@@ -21,6 +24,7 @@ await Promise.all([
     outfile: "dist/preload.js",
     external: ["electron"],
   }),
+  copyFile("src/setup.html", "dist/setup.html"),
 ]);
 
 console.log("Desktop build complete.");

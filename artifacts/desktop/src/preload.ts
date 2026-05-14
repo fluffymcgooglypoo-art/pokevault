@@ -1,8 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { IpcRendererEvent } from "electron";
 
-// Map user-supplied callbacks → the IPC wrapper functions so we can
-// remove them precisely with off*() calls.
 const handlerMap = new WeakMap<
   (data: unknown) => void,
   (_e: IpcRendererEvent, d: unknown) => void
@@ -26,11 +24,12 @@ const apiPort = process.env["ELECTRON_API_PORT"] ?? "8082";
 
 contextBridge.exposeInMainWorld("electronApi", {
   isElectron: true,
-
-  // The renderer calls setBaseUrl(apiBaseUrl) so all /api/... calls reach
-  // the Express server even when the page is loaded from a different origin
-  // (e.g. Vite dev server in dev mode).
   apiBaseUrl: `http://localhost:${apiPort}`,
+
+  setup: {
+    saveDatabase: (url: string): Promise<void> =>
+      ipcRenderer.invoke("setup:save-database", url),
+  },
 
   nfc: {
     onReaderConnected:    (cb: (d: unknown) => void) => on("nfc:reader-connected", cb),

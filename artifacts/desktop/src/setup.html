@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PokeVault — Setup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      color: #e5e5e5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 520px;
+    }
+    .logo { color: #00e5cc; font-size: 1.4rem; font-weight: 700; letter-spacing: 0.08em; }
+    .logo span { color: #999; font-size: 0.75rem; font-weight: 400; display: block; letter-spacing: 0.15em; margin-top: 2px; }
+    h2 { font-size: 1.1rem; font-weight: 600; margin: 1.8rem 0 0.5rem; }
+    p  { color: #888; font-size: 0.875rem; line-height: 1.6; }
+    label { display: block; font-size: 0.8rem; color: #aaa; letter-spacing: 0.05em; text-transform: uppercase; margin: 1.5rem 0 0.4rem; }
+    input {
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 5px;
+      color: #e5e5e5;
+      font-size: 0.85rem;
+      padding: 0.6rem 0.75rem;
+      font-family: "Consolas", "Courier New", monospace;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #00e5cc; }
+    input::placeholder { color: #444; }
+    .hint { color: #555; font-size: 0.78rem; margin-top: 0.4rem; }
+    button {
+      margin-top: 1.8rem;
+      width: 100%;
+      background: #00e5cc;
+      color: #000;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      padding: 0.7rem;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .error { color: #f87171; font-size: 0.82rem; margin-top: 0.75rem; display: none; }
+    .error.show { display: block; }
+    .steps { margin-top: 1.8rem; border-top: 1px solid #1e1e1e; padding-top: 1.5rem; }
+    .steps p { font-size: 0.8rem; color: #555; line-height: 1.8; }
+    .steps code { color: #00e5cc; background: #0a0a0a; padding: 1px 4px; border-radius: 3px; font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">POKEVAULT <span>TRADING OPERATIONS</span></div>
+
+    <h2>Database Setup</h2>
+    <p>PokeVault needs a PostgreSQL database to store your card inventory and price history.</p>
+
+    <label for="dbUrl">PostgreSQL Connection URL</label>
+    <input
+      id="dbUrl"
+      type="text"
+      placeholder="postgresql://user:password@host:5432/dbname"
+      spellcheck="false"
+      autocomplete="off"
+    />
+    <div class="hint">Paste the DATABASE_URL from your database provider.</div>
+    <div class="error" id="err"></div>
+
+    <button id="saveBtn" onclick="save()">Save &amp; Launch PokeVault</button>
+
+    <div class="steps">
+      <p>
+        <strong style="color:#aaa">Where to find your URL:</strong><br/>
+        • <strong>Replit</strong> — open your project → Secrets → copy <code>DATABASE_URL</code><br/>
+        • <strong>Supabase</strong> — Project Settings → Database → Connection String<br/>
+        • <strong>Neon</strong> — Dashboard → Connection Details<br/>
+        • <strong>Local</strong> — e.g. <code>postgresql://postgres:password@localhost:5432/pokevault</code>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    async function save() {
+      const url = document.getElementById('dbUrl').value.trim();
+      const err = document.getElementById('err');
+      const btn = document.getElementById('saveBtn');
+
+      err.classList.remove('show');
+      if (!url.startsWith('postgres')) {
+        err.textContent = 'URL must start with postgresql:// or postgres://';
+        err.classList.add('show');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+
+      try {
+        await window.electronApi.setup.saveDatabase(url);
+      } catch (e) {
+        err.textContent = 'Failed to save: ' + e.message;
+        err.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Save & Launch PokeVault';
+      }
+    }
+
+    document.getElementById('dbUrl').addEventListener('keydown', e => {
+      if (e.key === 'Enter') save();
+    });
+  </script>
+</body>
+</html>

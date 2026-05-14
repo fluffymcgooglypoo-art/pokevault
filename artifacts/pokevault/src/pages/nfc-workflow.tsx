@@ -1,187 +1,291 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
-  useListCards,
-  getListCardsQueryKey,
   useCheckNfcUrl,
   useCreateNfcTag,
   useUpdateNfcTag,
-  useUpdateCard,
+  useCreateCard,
+  getListCardsQueryKey,
   getListNfcTagsQueryKey,
+  type CardInputCondition,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, AlertCircle, Wifi, Loader2, Search, ArrowRight, RefreshCw } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  CheckCircle2,
+  AlertCircle,
+  Wifi,
+  Loader2,
+  RefreshCw,
+  ExternalLink,
+  Radio,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
-const NTAG213_MAX = 137;
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
-type SelectedCard = {
-  id: number;
-  name: string;
-  short_code: string | null;
-  nfc_written: boolean;
-  nfc_tag_id: number | null;
-  purchase_price: number;
-  market_value: number | null;
-  percent_paid: number | null;
+type ByteCheck = {
+  byte_length: number;
+  max_bytes: number;
+  fits: boolean;
+  message?: string | null;
 };
+
+const CONDITIONS = [
+  { value: "mint", label: "Mint" },
+  { value: "near_mint", label: "Near Mint" },
+  { value: "lightly_played", label: "Lightly Played" },
+  { value: "moderately_played", label: "Moderately Played" },
+  { value: "heavily_played", label: "Heavily Played" },
+  { value: "damaged", label: "Damaged" },
+];
+
+function detectUrlType(url: string): "tcgplayer" | "ebay" | null {
+  if (url.includes("tcgplayer.com")) return "tcgplayer";
+  if (url.includes("ebay.com")) return "ebay";
+  return null;
+}
+
+const STEPS = [
+  { n: 1, label: "Scan Tag" },
+  { n: 2, label: "Source URL" },
+  { n: 3, label: "Card Info" },
+  { n: 4, label: "Write" },
+  { n: 5, label: "Done" },
+];
 
 export default function NfcWorkflow() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
   const [step, setStep] = useState<Step>(1);
-  const [cardSearch, setCardSearch] = useState("");
-  const [selectedCard, setSelectedCard] = useState<SelectedCard | null>(null);
-  const [percentPaidInput, setPercentPaidInput] = useState("");
+
+  // Step 1 — Scan
+  const [uid, setUid] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
+  const scanAbortRef = useRef<AbortController | null>(null);
+
+  // Step 2 — URL
   const [urlInput, setUrlInput] = useState("");
-  const [checkResult, setCheckResult] = useState<{
-    byte_length: number;
-    max_bytes: number;
-    fits: boolean;
-    short_url_recommended: boolean;
-    message?: string | null;
-  } | null>(null);
-  const [generatedShortLink, setGeneratedShortLink] = useState("");
+  const [byteCheck, setByteCheck] = useState<ByteCheck | null>(null);
+  const [urlChecking, setUrlChecking] = useState(false);
+  const urlTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Step 3 — Card info
+  const [cardName, setCardName] = useState("");
+  const [setNameVal, setSetNameVal] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [condition, setCondition] = useState<CardInputCondition>("near_mint");
+  const [purchasePrice, setPurchasePrice] = useState("");
+  const [marketValue, setMarketValue] = useState("");
+
+  // Step 4 — Write
+  const [createdCardId, setCreatedCardId] = useState<number | null>(null);
   const [createdTagId, setCreatedTagId] = useState<number | null>(null);
+  const [shortLink, setShortLink] = useState("");
+  const [saving, setSaving] = useState(false);
   const [writing, setWriting] = useState(false);
-
-  const { data: cards } = useListCards(
-    cardSearch ? { search: cardSearch } : {},
-    { query: { queryKey: getListCardsQueryKey(cardSearch ? { search: cardSearch } : {}) } }
-  );
-
-  const checkUrl = useCheckNfcUrl();
-  const createTag = useCreateNfcTag();
-  const updateTag = useUpdateNfcTag();
-  const updateCard = useUpdateCard();
+  const [writeError, setWriteError] = useState("");
 
   const nfcAvailable = typeof window !== "undefined" && "NDEFReader" in window;
 
-  function reset() {
-    setStep(1);
-    setSelectedCard(null);
-    setCardSearch("");
-    setPercentPaidInput("");
-    setUrlInput("");
-    setCheckResult(null);
-    setGeneratedShortLink("");
-    setCreatedTagId(null);
-    setWriting(false);
-  }
+  const checkUrlMutation = useCheckNfcUrl();
+  const createNfcTag = useCreateNfcTag();
+  const updateNfcTag = useUpdateNfcTag();
+  const createCard = useCreateCard();
 
-  function handleSelectCard(card: SelectedCard) {
-    setSelectedCard(card);
-    // Pre-fill percent paid if already set on the card
-    if (card.percent_paid != null) {
-      setPercentPaidInput(String(card.percent_paid));
-    } else if (card.market_value != null && card.market_value > 0) {
-      const derived = (card.purchase_price / card.market_value) * 100;
-      setPercentPaidInput(derived.toFixed(1));
-    } else {
-      setPercentPaidInput("");
-    }
-    setStep(2);
-  }
-
-  async function handleConfirmDetails() {
-    if (!selectedCard) return;
-    // Save percent paid if provided
-    const pct = parseFloat(percentPaidInput);
-    if (!isNaN(pct) && pct > 0) {
-      updateCard.mutate({ id: selectedCard.id, data: { percent_paid: pct } });
-      queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
-    }
-    setStep(3);
-  }
-
-  async function handleCheckUrl() {
-    if (!urlInput.trim()) return;
-    const result = await checkUrl.mutateAsync({ data: { url: urlInput.trim() } });
-    setCheckResult(result);
-  }
-
-  async function handleGenerateShortLink() {
-    if (!selectedCard) return;
-    const origin = window.location.origin;
-    const shortLink = `${origin}/overlay/${selectedCard.short_code ?? selectedCard.id}`;
-
-    const tag = await createTag.mutateAsync({
-      data: {
-        card_id: selectedCard.id,
-        payload_url: shortLink,
-      },
-    });
-    setGeneratedShortLink(shortLink);
-    setCreatedTagId(tag.id);
-    queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
-    setStep(4);
-  }
-
-  async function handleWriteTag() {
-    if (!generatedShortLink || !createdTagId) return;
-    setWriting(true);
+  // ── NFC Scan ──────────────────────────────────────────────────
+  async function handleStartScan() {
+    if (!nfcAvailable) return;
+    setScanError("");
+    setScanning(true);
     try {
-      if (!nfcAvailable) throw new Error("Web NFC not available.");
-      const ndef = new (window as unknown as { NDEFReader: new () => { write: (msg: unknown) => Promise<void> } }).NDEFReader();
-      await ndef.write({ records: [{ recordType: "url", data: generatedShortLink }] });
-      await updateTag.mutateAsync({ tagId: createdTagId, data: { written: true } });
-      setStep(5);
-      queryClient.invalidateQueries({ queryKey: getListNfcTagsQueryKey() });
+      const ndef = new (window as unknown as { NDEFReader: new () => {
+        scan: (opts: { signal: AbortSignal }) => Promise<void>;
+        onreading: ((e: { serialNumber: string }) => void) | null;
+        onreadingerror: (() => void) | null;
+      } }).NDEFReader();
+      const ctrl = new AbortController();
+      scanAbortRef.current = ctrl;
+      await ndef.scan({ signal: ctrl.signal });
+      ndef.onreading = (event) => {
+        const formatted = event.serialNumber.toUpperCase().replace(/[-\s]/g, ":");
+        setUid(formatted);
+        setScanning(false);
+        ctrl.abort();
+      };
+      ndef.onreadingerror = () => {
+        setScanError("Could not read tag — try repositioning it.");
+        setScanning(false);
+      };
+    } catch (err: unknown) {
+      if ((err as Error)?.name === "AbortError") return;
+      setScanError(err instanceof Error ? err.message : "Scan failed");
+      setScanning(false);
+    }
+  }
+
+  function handleStopScan() {
+    scanAbortRef.current?.abort();
+    setScanning(false);
+  }
+
+  // ── URL debounce check ────────────────────────────────────────
+  function handleUrlChange(value: string) {
+    setUrlInput(value);
+    setByteCheck(null);
+    if (urlTimerRef.current) clearTimeout(urlTimerRef.current);
+    if (!value.trim()) { setUrlChecking(false); return; }
+    setUrlChecking(true);
+    urlTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await checkUrlMutation.mutateAsync({ data: { url: value.trim() } });
+        setByteCheck(result);
+      } catch {
+        // ignore
+      } finally {
+        setUrlChecking(false);
+      }
+    }, 450);
+  }
+
+  // ── Save inventory record + NFC tag ──────────────────────────
+  async function handleSave() {
+    const pprice = parseFloat(purchasePrice);
+    const mvalue = marketValue.trim() ? parseFloat(marketValue) : undefined;
+    const urlType = detectUrlType(urlInput);
+
+    setSaving(true);
+    try {
+      const card = await createCard.mutateAsync({
+        data: {
+          name: cardName.trim(),
+          set_name: setNameVal.trim() || undefined,
+          card_number: cardNumber.trim() || undefined,
+          condition,
+          purchase_price: pprice,
+          market_value: mvalue,
+          tcgplayer_url: urlType === "tcgplayer" && urlInput ? urlInput.trim() : undefined,
+          ebay_url: urlType === "ebay" && urlInput ? urlInput.trim() : undefined,
+        },
+      });
+
+      const origin = window.location.origin;
+      const overlay = `${origin}/overlay/${card.short_code ?? card.id}`;
+      setShortLink(overlay);
+
+      const tag = await createNfcTag.mutateAsync({
+        data: {
+          card_id: card.id,
+          tag_uid: uid.trim() || undefined,
+          payload_url: overlay,
+        },
+      });
+
+      setCreatedCardId(card.id);
+      setCreatedTagId(tag.id);
       queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      toast({ title: "NFC write failed", description: msg, variant: "destructive" });
+      toast({
+        title: "Failed to save",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Write short link to physical tag ─────────────────────────
+  async function handleWriteTag() {
+    if (!nfcAvailable || !createdTagId) return;
+    setWriting(true);
+    setWriteError("");
+    try {
+      const ndef = new (window as unknown as { NDEFReader: new () => {
+        write: (msg: unknown) => Promise<void>;
+      } }).NDEFReader();
+      await ndef.write({ records: [{ recordType: "url", data: shortLink }] });
+      await updateNfcTag.mutateAsync({ tagId: createdTagId, data: { written: true } });
+      queryClient.invalidateQueries({ queryKey: getListNfcTagsQueryKey() });
+      setStep(5);
+    } catch (err: unknown) {
+      if ((err as Error)?.name !== "AbortError") {
+        setWriteError(err instanceof Error ? err.message : "NFC write failed");
+      }
     } finally {
       setWriting(false);
     }
   }
 
-  async function handleMarkWrittenManual() {
+  async function handleMarkWritten() {
     if (!createdTagId) return;
-    await updateTag.mutateAsync({ tagId: createdTagId, data: { written: true } });
-    setStep(5);
+    await updateNfcTag.mutateAsync({ tagId: createdTagId, data: { written: true } });
     queryClient.invalidateQueries({ queryKey: getListNfcTagsQueryKey() });
     queryClient.invalidateQueries({ queryKey: getListCardsQueryKey() });
+    setStep(5);
   }
 
-  const steps = [
-    { n: 1, label: "Select Card" },
-    { n: 2, label: "% Paid" },
-    { n: 3, label: "URL Check" },
-    { n: 4, label: "Write Tag" },
-    { n: 5, label: "Done" },
-  ];
+  function reset() {
+    scanAbortRef.current?.abort();
+    setStep(1);
+    setUid(""); setScanning(false); setScanError("");
+    setUrlInput(""); setByteCheck(null); setUrlChecking(false);
+    setCardName(""); setSetNameVal(""); setCardNumber("");
+    setCondition("near_mint"); setPurchasePrice(""); setMarketValue("");
+    setCreatedCardId(null); setCreatedTagId(null); setShortLink("");
+    setSaving(false); setWriting(false); setWriteError("");
+  }
 
-  const filteredCards = (cards ?? []).filter((c) => c.status !== "sold");
+  const urlType = detectUrlType(urlInput);
+  const byteUsagePct = byteCheck
+    ? Math.min(100, (byteCheck.byte_length / byteCheck.max_bytes) * 100)
+    : 0;
+  const step3Valid =
+    cardName.trim().length > 0 &&
+    purchasePrice.trim().length > 0 &&
+    !isNaN(parseFloat(purchasePrice));
 
   return (
     <div className="flex flex-col h-full overflow-auto">
       <div className="px-6 py-4 border-b border-border bg-card">
         <h2 className="font-semibold text-foreground">NFC Tag Workflow</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">Program NTAG213 stickers for your cards</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Scan an NTAG213 sticker → link a source URL → enter card details → write tag &amp; add to inventory
+        </p>
       </div>
 
       <div className="flex-1 p-6 max-w-2xl mx-auto w-full space-y-6">
-        {/* Step indicator */}
-        <div className="flex items-center gap-0" data-testid="step-indicator">
-          {steps.map((s, i) => {
+
+        {/* ── Step indicator ── */}
+        <div className="flex items-center">
+          {STEPS.map((s, i) => {
             const done = step > s.n;
             const active = step === s.n;
             return (
               <div key={s.n} className="flex items-center flex-1">
                 <div className="flex flex-col items-center gap-1 flex-1">
-                  <div className={`w-7 h-7 flex items-center justify-center border text-xs font-bold ${done ? "bg-primary border-primary text-primary-foreground" : active ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>
+                  <div className={`w-7 h-7 flex items-center justify-center border text-xs font-bold
+                    ${done ? "bg-primary border-primary text-primary-foreground"
+                      : active ? "border-primary text-primary"
+                      : "border-border text-muted-foreground"}`}>
                     {done ? <CheckCircle2 className="h-4 w-4" /> : s.n}
                   </div>
-                  <span className={`text-[10px] font-medium ${active ? "text-primary" : done ? "text-muted-foreground" : "text-muted-foreground/50"}`}>
+                  <span className={`text-[10px] font-medium
+                    ${active ? "text-primary" : done ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
                     {s.label}
                   </span>
                 </div>
-                {i < steps.length - 1 && (
+                {i < STEPS.length - 1 && (
                   <div className={`h-px flex-1 mb-5 ${done ? "bg-primary" : "bg-border"}`} />
                 )}
               </div>
@@ -189,295 +293,524 @@ export default function NfcWorkflow() {
           })}
         </div>
 
-        {/* Step 1 — Select card */}
+        {/* ══════════════════════════════════════════
+            STEP 1 — Scan NFC Tag
+        ══════════════════════════════════════════ */}
         {step === 1 && (
           <Card className="bg-card border-border rounded-none">
             <CardHeader>
-              <CardTitle className="text-sm">Select a Card</CardTitle>
+              <CardTitle className="text-sm">Scan NFC Tag</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  data-testid="input-card-search"
-                  placeholder="Search your inventory..."
-                  value={cardSearch}
-                  onChange={(e) => setCardSearch(e.target.value)}
-                  className="pl-9 bg-background border-border"
-                />
-              </div>
-              <div className="space-y-1 max-h-64 overflow-y-auto">
-                {filteredCards.length === 0 && (
-                  <p className="text-sm text-muted-foreground py-4 text-center">No cards found</p>
-                )}
-                {filteredCards.map((card) => (
-                  <button
-                    key={card.id}
-                    data-testid={`button-select-card-${card.id}`}
-                    className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-muted/30 border border-transparent hover:border-border transition-colors group"
-                    onClick={() => handleSelectCard({
-                      id: card.id,
-                      name: card.name,
-                      short_code: card.short_code ?? null,
-                      nfc_written: card.nfc_written ?? false,
-                      nfc_tag_id: card.nfc_tag_id ?? null,
-                      purchase_price: card.purchase_price,
-                      market_value: card.market_value ?? null,
-                      percent_paid: card.percent_paid ?? null,
-                    })}
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{card.name}</p>
-                      <div className="flex gap-3 mt-0.5">
-                        {card.set_name && <span className="text-xs text-muted-foreground">{card.set_name}</span>}
-                        <span className="text-xs text-muted-foreground font-mono">${card.purchase_price.toFixed(2)} paid</span>
-                        {card.market_value != null && (
-                          <span className="text-xs text-muted-foreground font-mono">${card.market_value.toFixed(2)} market</span>
-                        )}
+            <CardContent className="space-y-5">
+              <p className="text-xs text-muted-foreground">
+                Place an NTAG213 sticker on the card, then scan it to capture the chip UID.
+                This permanently links the physical tag to the inventory record.
+              </p>
+
+              {/* Scan zone */}
+              {nfcAvailable ? (
+                <div
+                  data-testid="scan-zone"
+                  className={`flex flex-col items-center justify-center py-12 border-2 border-dashed cursor-pointer select-none transition-colors
+                    ${scanning ? "border-primary bg-primary/5" : uid ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/40"}`}
+                  onClick={uid ? undefined : scanning ? handleStopScan : handleStartScan}
+                >
+                  {scanning ? (
+                    <>
+                      <div className="relative flex items-center justify-center w-16 h-16">
+                        <Radio className="h-10 w-10 text-primary" />
+                        <span className="absolute inset-0 rounded-full border-2 border-primary/40 animate-ping" />
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {card.nfc_written && <Wifi className="h-3.5 w-3.5 text-primary" />}
-                      <ArrowRight className="h-4 w-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors" />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 2 — % Paid */}
-        {step === 2 && selectedCard && (
-          <Card className="bg-card border-border rounded-none">
-            <CardHeader>
-              <CardTitle className="text-sm">
-                % Paid — <span className="text-primary">{selectedCard.name}</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-xs text-muted-foreground">
-                Enter the percentage of market value you paid for this card. This helps track your buying efficiency across your collection.
-              </p>
-
-              {/* Summary */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-background border border-border p-3">
-                  <p className="text-xs text-muted-foreground">Purchase Price</p>
-                  <p className="font-mono text-sm font-bold text-foreground mt-1">${selectedCard.purchase_price.toFixed(2)}</p>
+                      <p className="text-sm font-medium text-primary mt-5">Scanning — hold tag to reader</p>
+                      <p className="text-xs text-muted-foreground mt-1.5">Click to cancel</p>
+                    </>
+                  ) : uid ? (
+                    <>
+                      <CheckCircle2 className="h-10 w-10 text-primary" />
+                      <p className="text-sm font-medium text-foreground mt-3">Tag detected</p>
+                      <p className="font-mono text-primary text-sm mt-1 tracking-wider">{uid}</p>
+                      <button
+                        className="text-xs text-muted-foreground hover:text-foreground mt-4 underline"
+                        onClick={(e) => { e.stopPropagation(); setUid(""); setScanError(""); }}
+                      >
+                        Scan a different tag
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Wifi className="h-12 w-12 text-muted-foreground/30" />
+                      <p className="text-sm font-medium text-muted-foreground mt-4">Click to start scanning</p>
+                      <p className="text-xs text-muted-foreground/50 mt-1">Chrome + Android NFC required</p>
+                    </>
+                  )}
                 </div>
-                <div className="bg-background border border-border p-3">
-                  <p className="text-xs text-muted-foreground">Market Value</p>
-                  <p className="font-mono text-sm font-bold text-foreground mt-1">
-                    {selectedCard.market_value != null ? `$${selectedCard.market_value.toFixed(2)}` : "—"}
-                  </p>
-                </div>
-                <div className="bg-background border border-border p-3">
-                  <p className="text-xs text-muted-foreground">Calculated %</p>
-                  <p className="font-mono text-sm font-bold text-primary mt-1">
-                    {selectedCard.market_value != null && selectedCard.market_value > 0
-                      ? `${((selectedCard.purchase_price / selectedCard.market_value) * 100).toFixed(1)}%`
-                      : "—"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">% Paid of Market Value</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    data-testid="input-percent-paid"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="999"
-                    placeholder="e.g. 65"
-                    value={percentPaidInput}
-                    onChange={(e) => setPercentPaidInput(e.target.value)}
-                    className="bg-background border-border max-w-40"
-                  />
-                  <span className="text-muted-foreground text-sm">%</span>
-                </div>
-                {percentPaidInput && !isNaN(parseFloat(percentPaidInput)) && (
-                  <p className={`text-xs font-mono ${parseFloat(percentPaidInput) <= 70 ? "text-green-400" : parseFloat(percentPaidInput) <= 90 ? "text-yellow-400" : "text-muted-foreground"}`}>
-                    {parseFloat(percentPaidInput) <= 70 ? "Great deal" : parseFloat(percentPaidInput) <= 90 ? "Fair price" : "At/above market"}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="text-muted-foreground">Back</Button>
-                <Button
-                  data-testid="button-confirm-details"
-                  className="flex-1"
-                  onClick={handleConfirmDetails}
-                  disabled={updateCard.isPending}
-                >
-                  {updateCard.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</> : <>Continue <ArrowRight className="h-4 w-4 ml-2" /></>}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 3 — URL check */}
-        {step === 3 && selectedCard && (
-          <Card className="bg-card border-border rounded-none">
-            <CardHeader>
-              <CardTitle className="text-sm">
-                Check URL for <span className="text-primary">{selectedCard.name}</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-xs text-muted-foreground">
-                Paste the TCGplayer or eBay listing URL. The app checks whether it fits within NTAG213's 137-byte limit.
-                If too long, use the generated short link instead.
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  data-testid="input-url"
-                  placeholder="https://www.tcgplayer.com/product/..."
-                  value={urlInput}
-                  onChange={(e) => { setUrlInput(e.target.value); setCheckResult(null); }}
-                  className="bg-background border-border flex-1"
-                />
-                <Button
-                  data-testid="button-check-url"
-                  onClick={handleCheckUrl}
-                  disabled={!urlInput.trim() || checkUrl.isPending}
-                  variant="outline"
-                >
-                  {checkUrl.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Check"}
-                </Button>
-              </div>
-
-              {checkResult && (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Byte usage</span>
-                      <span className={`font-mono ${checkResult.fits ? "text-green-400" : "text-red-400"}`}>
-                        {checkResult.byte_length} / {checkResult.max_bytes} bytes
-                      </span>
-                    </div>
-                    <div className="h-2 bg-muted overflow-hidden">
-                      <div
-                        data-testid="byte-meter"
-                        className={`h-full transition-all ${checkResult.fits ? checkResult.byte_length > 100 ? "bg-yellow-400" : "bg-green-400" : "bg-red-500"}`}
-                        style={{ width: `${Math.min(100, (checkResult.byte_length / checkResult.max_bytes) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className={`flex items-start gap-2 p-3 border ${checkResult.fits ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5"}`}>
-                    {checkResult.fits
-                      ? <CheckCircle2 className="h-4 w-4 text-green-400 mt-0.5 shrink-0" />
-                      : <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />}
-                    <p className="text-sm" data-testid="text-url-check-result">{checkResult.message}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setStep(2)} className="text-muted-foreground">Back</Button>
-                    <Button data-testid="button-next-step" className="flex-1" onClick={() => {
-                      // If URL fits and is short enough, skip short link and go straight to write
-                      // but we still generate the internal short link for the overlay
-                      handleGenerateShortLink();
-                    }} disabled={createTag.isPending}>
-                      {createTag.isPending
-                        ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
-                        : <>Generate Short Link &amp; Continue <ArrowRight className="h-4 w-4 ml-2" /></>}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {!checkResult && (
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setStep(2)} className="text-muted-foreground">Back</Button>
-                  <Button
-                    data-testid="button-skip-url"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={handleGenerateShortLink}
-                    disabled={createTag.isPending}
-                  >
-                    {createTag.isPending
-                      ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating...</>
-                      : <>Skip URL Check — Generate Short Link <ArrowRight className="h-4 w-4 ml-2" /></>}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 4 — Write tag */}
-        {step === 4 && selectedCard && (
-          <Card className="bg-card border-border rounded-none">
-            <CardHeader>
-              <CardTitle className="text-sm">Write to NFC Tag</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!nfcAvailable && (
+              ) : (
                 <div className="flex items-start gap-2 p-3 border border-yellow-500/30 bg-yellow-500/5">
                   <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
                   <div className="text-sm">
                     <p className="font-medium text-yellow-400">Web NFC not available</p>
                     <p className="text-muted-foreground text-xs mt-1">
-                      Web NFC requires Chrome with NFC hardware. Use "Mark Written" to record manually.
+                      Requires Chrome on Android with NFC enabled. Enter the UID manually below.
                     </p>
                   </div>
                 </div>
               )}
-              <div className="p-3 bg-background border border-border">
-                <p className="text-xs text-muted-foreground mb-1">Short link to write</p>
-                <p className="font-mono text-sm text-primary break-all" data-testid="text-short-link">{generatedShortLink}</p>
+
+              {scanError && (
+                <p className="text-xs text-red-400 flex items-center gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {scanError}
+                </p>
+              )}
+
+              {/* Manual UID entry */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  {nfcAvailable ? "Or enter UID manually" : "NFC Tag UID"}
+                </label>
+                <Input
+                  data-testid="input-uid"
+                  placeholder="04:A3:F2:1B:8C:40:81"
+                  value={uid}
+                  onChange={(e) => setUid(e.target.value.toUpperCase())}
+                  className="font-mono bg-background border-border tracking-wider"
+                />
+                <p className="text-[10px] text-muted-foreground/50">
+                  Spaces, colons and dashes are normalized automatically
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">Hold your NTAG213 sticker near the reader, then click Write.</p>
-              <div className="flex gap-2">
-                <Button
-                  data-testid="button-write-tag"
-                  className="flex-1"
-                  onClick={handleWriteTag}
-                  disabled={writing || !nfcAvailable}
+
+              <Button
+                data-testid="button-step1-next"
+                className="w-full"
+                onClick={() => setStep(2)}
+                disabled={!uid.trim()}
+              >
+                Continue with UID
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ══════════════════════════════════════════
+            STEP 2 — Source URL
+        ══════════════════════════════════════════ */}
+        {step === 2 && (
+          <Card className="bg-card border-border rounded-none">
+            <CardHeader>
+              <CardTitle className="text-sm">Source URL</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <p className="text-xs text-muted-foreground">
+                Open TCGplayer or eBay, find your card's listing, then paste the URL here.
+                The app stores this for price lookups — the short overlay link is what gets written to the tag.
+              </p>
+
+              {/* Quick-open links */}
+              <div className="flex gap-3">
+                <a
+                  href="https://www.tcgplayer.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2.5 border border-border text-sm text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
                 >
-                  {writing ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Writing...</> : <><Wifi className="h-4 w-4 mr-2" /> Write NFC Tag</>}
-                </Button>
-                {createdTagId && (
-                  <Button
-                    data-testid="button-mark-written-manual"
-                    variant="outline"
-                    onClick={handleMarkWrittenManual}
-                    disabled={updateTag.isPending}
-                  >
-                    Mark Written
-                  </Button>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open TCGplayer.com
+                </a>
+                <a
+                  href="https://www.ebay.com/sch/i.html?_nkw=pokemon+card&_sacat=2536"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2.5 border border-border text-sm text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open eBay.com
+                </a>
+              </div>
+
+              {/* URL input + live byte check */}
+              <div className="space-y-3">
+                <div className="relative">
+                  <Input
+                    data-testid="input-url"
+                    placeholder="Paste TCGplayer or eBay product URL…"
+                    value={urlInput}
+                    onChange={(e) => handleUrlChange(e.target.value)}
+                    className="bg-background border-border pr-28"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                    {urlChecking && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                    {urlType === "tcgplayer" && !urlChecking && (
+                      <span className="text-[10px] font-mono text-primary border border-primary/30 px-1.5 py-0.5">TCGplayer</span>
+                    )}
+                    {urlType === "ebay" && !urlChecking && (
+                      <span className="text-[10px] font-mono text-yellow-400 border border-yellow-400/30 px-1.5 py-0.5">eBay</span>
+                    )}
+                  </div>
+                </div>
+
+                {byteCheck && urlInput && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">URL byte size</span>
+                      <span className={`font-mono font-medium
+                        ${byteCheck.fits
+                          ? byteCheck.byte_length > 100 ? "text-yellow-400" : "text-green-400"
+                          : "text-red-400"}`}>
+                        {byteCheck.byte_length} / {byteCheck.max_bytes} bytes
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-muted overflow-hidden">
+                      <div
+                        data-testid="byte-meter"
+                        className={`h-full transition-all duration-300
+                          ${byteCheck.fits
+                            ? byteCheck.byte_length > 100 ? "bg-yellow-400" : "bg-green-400"
+                            : "bg-red-500"}`}
+                        style={{ width: `${byteUsagePct}%` }}
+                      />
+                    </div>
+                    {!byteCheck.fits && (
+                      <div className="flex items-start gap-2 p-3 border border-yellow-500/30 bg-yellow-500/5">
+                        <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
+                        <p className="text-xs text-yellow-300">
+                          URL is {byteCheck.byte_length - byteCheck.max_bytes} bytes too large for NTAG213.
+                          That's fine — the short overlay link will be written to the tag instead.
+                          This URL is stored only for price lookups.
+                        </p>
+                      </div>
+                    )}
+                    {byteCheck.fits && (
+                      <p className="text-xs text-green-400 flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {byteCheck.byte_length > 100
+                          ? "URL fits but is large — short link will be written instead"
+                          : "URL fits within NTAG213 limits"}
+                      </p>
+                    )}
+                  </div>
                 )}
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setStep(1)} className="text-muted-foreground">
+                  Back
+                </Button>
+                <Button data-testid="button-step2-next" className="flex-1" onClick={() => setStep(3)}>
+                  Continue
+                </Button>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground/50 text-center">
+                URL is optional — you can add or update it later from the card detail page.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ══════════════════════════════════════════
+            STEP 3 — Card Details
+        ══════════════════════════════════════════ */}
+        {step === 3 && (
+          <Card className="bg-card border-border rounded-none">
+            <CardHeader>
+              <CardTitle className="text-sm">Card Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Fill in the card information. Market value will be auto-populated from the source URL once the price scraper is connected.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Card name — full width */}
+                <div className="col-span-2 space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Card Name <span className="text-red-400">*</span>
+                  </label>
+                  <Input
+                    data-testid="input-card-name"
+                    placeholder="e.g. Charizard VMAX"
+                    value={cardName}
+                    onChange={(e) => setCardName(e.target.value)}
+                    className="bg-background border-border"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Set Name</label>
+                  <Input
+                    placeholder="e.g. Brilliant Stars"
+                    value={setNameVal}
+                    onChange={(e) => setSetNameVal(e.target.value)}
+                    className="bg-background border-border"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Card Number</label>
+                  <Input
+                    placeholder="e.g. 018/172"
+                    value={cardNumber}
+                    onChange={(e) => setCardNumber(e.target.value)}
+                    className="bg-background border-border"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Condition <span className="text-red-400">*</span>
+                  </label>
+                  <Select value={condition} onValueChange={(v) => setCondition(v as CardInputCondition)}>
+                    <SelectTrigger className="bg-background border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CONDITIONS.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Amount Paid <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                    <Input
+                      data-testid="input-purchase-price"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={purchasePrice}
+                      onChange={(e) => setPurchasePrice(e.target.value)}
+                      className="pl-7 bg-background border-border"
+                    />
+                  </div>
+                </div>
+
+                {/* Market value — full width */}
+                <div className="col-span-2 space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Market Value
+                    <span className="ml-1.5 text-muted-foreground/50 font-normal text-[10px]">
+                      optional — will be auto-filled by scraper
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                    <Input
+                      data-testid="input-market-value"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={marketValue}
+                      onChange={(e) => setMarketValue(e.target.value)}
+                      className="pl-7 bg-background border-border"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* P&L preview */}
+              {purchasePrice && marketValue && !isNaN(parseFloat(purchasePrice)) && !isNaN(parseFloat(marketValue)) && (
+                <div className="flex items-center gap-3 px-3 py-2 bg-background border border-border text-xs">
+                  <span className="text-muted-foreground">Unrealized P&L</span>
+                  {(() => {
+                    const pl = parseFloat(marketValue) - parseFloat(purchasePrice);
+                    const pct = parseFloat(purchasePrice) > 0
+                      ? ((pl / parseFloat(purchasePrice)) * 100).toFixed(1)
+                      : "0";
+                    return (
+                      <span className={`font-mono font-bold ${pl > 0 ? "text-green-400" : pl < 0 ? "text-red-400" : "text-muted-foreground"}`}>
+                        {pl >= 0 ? "+" : ""}${pl.toFixed(2)} ({pct}%)
+                      </span>
+                    );
+                  })()}
+                  <span className="text-muted-foreground ml-auto">
+                    % paid: <span className="font-mono text-primary">
+                      {parseFloat(marketValue) > 0
+                        ? `${((parseFloat(purchasePrice) / parseFloat(marketValue)) * 100).toFixed(1)}%`
+                        : "—"}
+                    </span>
+                  </span>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setStep(2)} className="text-muted-foreground">
+                  Back
+                </Button>
+                <Button
+                  data-testid="button-step3-next"
+                  className="flex-1"
+                  onClick={() => setStep(4)}
+                  disabled={!step3Valid}
+                >
+                  Review &amp; Write
+                </Button>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Step 5 — Done */}
-        {step === 5 && selectedCard && (
+        {/* ══════════════════════════════════════════
+            STEP 4 — Write & Save
+        ══════════════════════════════════════════ */}
+        {step === 4 && (
           <Card className="bg-card border-border rounded-none">
-            <CardContent className="py-10 flex flex-col items-center gap-4">
-              <CheckCircle2 className="h-12 w-12 text-primary" data-testid="icon-success" />
-              <div className="text-center">
-                <p className="font-semibold text-foreground">{selectedCard.name}</p>
-                <p className="text-sm text-muted-foreground mt-1">NFC tag programmed successfully</p>
-                {percentPaidInput && !isNaN(parseFloat(percentPaidInput)) && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    % paid recorded: <span className="text-primary font-mono">{parseFloat(percentPaidInput).toFixed(1)}%</span>
+            <CardHeader>
+              <CardTitle className="text-sm">Write Tag &amp; Save to Inventory</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+
+              {/* Summary table */}
+              <div className="divide-y divide-border border border-border">
+                {[
+                  ["Card", cardName],
+                  ...(setNameVal ? [["Set", setNameVal + (cardNumber ? ` · ${cardNumber}` : "")]] : []),
+                  ["Condition", CONDITIONS.find((c) => c.value === condition)?.label ?? condition],
+                  ["NFC UID", uid],
+                  ["Amount Paid", `$${parseFloat(purchasePrice).toFixed(2)}`],
+                  ...(marketValue ? [["Market Value", `$${parseFloat(marketValue).toFixed(2)}`]] : []),
+                  ...(urlInput ? [["Source URL", urlType === "tcgplayer" ? "TCGplayer link" : urlType === "ebay" ? "eBay link" : "Custom URL"]] : []),
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between px-3 py-2">
+                    <span className="text-xs text-muted-foreground">{label}</span>
+                    <span className={`text-sm font-medium ${label === "NFC UID" ? "font-mono text-xs text-primary tracking-wider" : "text-foreground"}`}>
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {!nfcAvailable && !createdCardId && (
+                <div className="flex items-start gap-2 p-3 border border-yellow-500/30 bg-yellow-500/5">
+                  <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
+                  <p className="text-xs text-yellow-300">
+                    Web NFC not available — the inventory record will be created and you can mark the tag as written manually.
+                  </p>
+                </div>
+              )}
+
+              {/* Phase A: not yet saved */}
+              {!createdCardId && (
+                <>
+                  <Button
+                    data-testid="button-save-and-write"
+                    className="w-full"
+                    onClick={handleSave}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving to inventory…</>
+                    ) : (
+                      <><Wifi className="h-4 w-4 mr-2" /> Save to Inventory &amp; Write Tag</>
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-muted-foreground"
+                    onClick={() => setStep(3)}
+                    disabled={saving}
+                  >
+                    Back
+                  </Button>
+                </>
+              )}
+
+              {/* Phase B: saved — show short link + write actions */}
+              {createdCardId && (
+                <>
+                  <div className="p-3 bg-background border border-primary/20">
+                    <p className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wider">Short link to write to tag</p>
+                    <p className="font-mono text-xs text-primary break-all" data-testid="text-short-link">{shortLink}</p>
+                  </div>
+
+                  {writeError && (
+                    <div className="flex items-start gap-2 p-3 border border-red-500/30 bg-red-500/5">
+                      <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+                      <div className="text-xs">
+                        <p className="text-red-400 font-medium">Write failed: {writeError}</p>
+                        <p className="text-muted-foreground mt-0.5">Try again below or mark written manually.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {nfcAvailable && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground text-center">
+                        Hold the NTAG213 sticker near your reader, then click Write.
+                      </p>
+                      <Button
+                        data-testid="button-write-tag"
+                        className="w-full"
+                        onClick={handleWriteTag}
+                        disabled={writing || updateNfcTag.isPending}
+                      >
+                        {writing ? (
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Writing to tag…</>
+                        ) : (
+                          <><Wifi className="h-4 w-4 mr-2" /> {writeError ? "Retry Write" : "Write to NFC Tag"}</>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  <Button
+                    data-testid="button-mark-written"
+                    variant="outline"
+                    className="w-full border-border text-muted-foreground hover:text-foreground"
+                    onClick={handleMarkWritten}
+                    disabled={updateNfcTag.isPending || writing}
+                  >
+                    {updateNfcTag.isPending
+                      ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Marking…</>
+                      : <><CheckCircle2 className="h-4 w-4 mr-2" /> Mark Written Manually</>}
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ══════════════════════════════════════════
+            STEP 5 — Done
+        ══════════════════════════════════════════ */}
+        {step === 5 && (
+          <Card className="bg-card border-border rounded-none">
+            <CardContent className="py-12 flex flex-col items-center gap-4">
+              <CheckCircle2 className="h-14 w-14 text-primary" data-testid="icon-success" />
+              <div className="text-center space-y-1.5">
+                <p className="text-lg font-semibold text-foreground">{cardName}</p>
+                {setNameVal && (
+                  <p className="text-xs text-muted-foreground">
+                    {setNameVal}{cardNumber ? ` · ${cardNumber}` : ""}
                   </p>
                 )}
-                <p className="font-mono text-xs text-primary mt-2 break-all">{generatedShortLink}</p>
+                <p className="text-sm text-muted-foreground">Added to inventory — NFC tag written</p>
+                <p className="font-mono text-xs text-primary mt-2">{uid}</p>
+                {shortLink && (
+                  <p className="font-mono text-[10px] text-muted-foreground/50 break-all mt-1">{shortLink}</p>
+                )}
               </div>
-              <Button data-testid="button-program-another" variant="outline" onClick={reset} className="mt-2">
+              <Button
+                data-testid="button-program-another"
+                variant="outline"
+                onClick={reset}
+                className="mt-2"
+              >
                 <RefreshCw className="h-3.5 w-3.5 mr-2" />
-                Program Another Card
+                Tag Another Card
               </Button>
             </CardContent>
           </Card>
         )}
+
       </div>
     </div>
   );

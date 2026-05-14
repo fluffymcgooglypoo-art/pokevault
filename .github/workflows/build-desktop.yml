@@ -43,7 +43,7 @@ jobs:
         run: pnpm --filter @workspace/desktop run build
 
       - name: Package Windows installer
-        run: pnpm --filter @workspace/desktop exec electron-builder --win --x64
+        run: pnpm --filter @workspace/desktop exec electron-builder --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

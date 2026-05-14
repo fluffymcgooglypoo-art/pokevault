@@ -1,0 +1,37 @@
+6s
+Run pnpm --filter @workspace/desktop exec electron-builder --win --x64
+  • electron-builder  version=26.8.1 os=10.0.26100
+  • Implicit publishing triggered by CI detection. This behavior will be disabled in electron-builder v27. Please use --publish explicitly.
+  • loaded configuration  file=D:\a\pokevault\pokevault\artifacts\desktop\electron-builder.yml
+  • description is missed in the package.json  appPackageFile=D:\a\pokevault\pokevault\artifacts\desktop\package.json
+  • author is missed in the package.json  appPackageFile=D:\a\pokevault\pokevault\artifacts\desktop\package.json
+  • packageManager not detected by file, falling back to environment detection  resolvedPackageManager=pnpm detected=D:\a\pokevault\pokevault\artifacts\desktop
+  • packageManager not detected by file, falling back to environment detection  resolvedPackageManager=pnpm detected=D:\a\pokevault\pokevault\artifacts\desktop
+  • detected workspace root for project using process environment  pm=pnpm config=undefined resolved=undefined projectDir=D:\a\pokevault\pokevault\artifacts\desktop
+  • executing @electron/rebuild  electronVersion=36.9.5 arch=x64 buildFromSource=false workspaceRoot=D:\a\pokevault\pokevault\artifacts\desktop projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=36.9.5 appOutDir=release\win-unpacked
+  • downloading     url=https://github.com/electron/electron/releases/download/v36.9.5/electron-v36.9.5-win32-x64.zip size=122 MB parts=8
+  • downloaded      url=https://github.com/electron/electron/releases/download/v36.9.5/electron-v36.9.5-win32-x64.zip duration=342ms
+  • searching for node modules  pm=pnpm searchDir=D:\a\pokevault\pokevault\artifacts\desktop
+  • searching for node modules  pm=traversal searchDir=D:\a\pokevault\pokevault\artifacts\desktop
+  • using manual traversal of node_modules to build dependency tree
+  • updating asar integrity executable resource  executablePath=release\win-unpacked\PokeVault.exe
+  ⨯ Cannot detect repository by .git/config. Please specify "repository" in the package.json (https://docs.npmjs.com/files/package.json#repository).
+Please see https://electron.build/publish  failedTask=build stackTrace=Error: Cannot detect repository by .git/config. Please specify "repository" in the package.json (https://docs.npmjs.com/files/package.json#repository).
+Please see https://electron.build/publish
+    at getInfo (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\publish\PublishManager.ts:582:13)
+    at getResolvedPublishConfig (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\publish\PublishManager.ts:591:18)
+    at resolvePublishConfigurations (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\publish\PublishManager.ts:474:16)
+    at getPublishConfigs (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\publish\PublishManager.ts:446:10)
+    at getAppUpdatePublishConfiguration (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\publish\PublishManager.ts:265:73)
+    at D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\publish\PublishManager.ts:130:29
+    at emitInternal (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\util\asyncEventEmitter.ts:61:9)
+    at AsyncEventEmitter.emit (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\util\asyncEventEmitter.ts:66:28)
+    at Packager.emitAfterPack (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\packager.ts:347:5)
+    at WinPackager.doPack (D:\a\pokevault\pokevault\node_modules\.pnpm\app-builder-lib@26.8.1_dmg-builder@26.8.1\node_modules\app-builder-lib\src\platformPackager.ts:344:5)
+undefined
+D:\a\pokevault\pokevault\artifacts\desktop:
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command failed with exit code 1: electron-builder --win --x64
+Error: Process completed with exit code 1.

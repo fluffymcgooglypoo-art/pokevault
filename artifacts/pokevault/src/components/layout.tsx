@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Library, Nfc, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, Library, Nfc, Settings as SettingsIcon, ScanLine } from "lucide-react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -7,6 +7,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/inventory", label: "Inventory", icon: Library },
+    { href: "/sales", label: "Sales", icon: ScanLine },
     { href: "/nfc", label: "NFC Workflow", icon: Nfc },
     { href: "/settings", label: "Settings", icon: SettingsIcon },
   ];

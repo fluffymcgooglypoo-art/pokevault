@@ -9,6 +9,7 @@ import Inventory from "@/pages/inventory";
 import CardDetail from "@/pages/card-detail";
 import NfcWorkflow from "@/pages/nfc-workflow";
 import Overlay from "@/pages/overlay";
+import Sales from "@/pages/sales";
 import Settings from "@/pages/settings";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ function AppRouter() {
             <Route path="/" component={Dashboard} />
             <Route path="/inventory" component={Inventory} />
             <Route path="/inventory/:id" component={CardDetail} />
+            <Route path="/sales" component={Sales} />
             <Route path="/nfc" component={NfcWorkflow} />
             <Route path="/settings" component={Settings} />
             <Route component={NotFound} />

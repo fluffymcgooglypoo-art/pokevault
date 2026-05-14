@@ -2,6 +2,8 @@ appId: com.pokevault.desktop
 productName: PokeVault
 copyright: PokeVault
 
+publish: null
+
 directories:
   output: release
   buildResources: build-resources

@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Ltdp00gO_WuwR7bFo-NKx"
+uri = "file://pokevault-desktop.zip"
+type = "unspecified"
+title = "PokeVault — Full Source (369 KB)"

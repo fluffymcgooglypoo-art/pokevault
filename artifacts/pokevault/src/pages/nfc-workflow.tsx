@@ -27,8 +27,10 @@ import {
   RefreshCw,
   ExternalLink,
   Radio,
+  Usb,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAcr122u } from "@/hooks/use-acr122u";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -96,40 +98,28 @@ export default function NfcWorkflow() {
   const [writing, setWriting] = useState(false);
   const [writeError, setWriteError] = useState("");
 
-  const nfcAvailable = typeof window !== "undefined" && "NDEFReader" in window;
+  const acr = useAcr122u();
+  const readerReady = acr.status === "ready";
 
   const checkUrlMutation = useCheckNfcUrl();
   const createNfcTag = useCreateNfcTag();
   const updateNfcTag = useUpdateNfcTag();
   const createCard = useCreateCard();
 
-  // ── NFC Scan ──────────────────────────────────────────────────
+  // ── NFC Scan via ACR122U ──────────────────────────────────────
   async function handleStartScan() {
-    if (!nfcAvailable) return;
+    if (!readerReady) return;
     setScanError("");
     setScanning(true);
+    const ctrl = new AbortController();
+    scanAbortRef.current = ctrl;
     try {
-      const ndef = new (window as unknown as { NDEFReader: new () => {
-        scan: (opts: { signal: AbortSignal }) => Promise<void>;
-        onreading: ((e: { serialNumber: string }) => void) | null;
-        onreadingerror: (() => void) | null;
-      } }).NDEFReader();
-      const ctrl = new AbortController();
-      scanAbortRef.current = ctrl;
-      await ndef.scan({ signal: ctrl.signal });
-      ndef.onreading = (event) => {
-        const formatted = event.serialNumber.toUpperCase().replace(/[-\s]/g, ":");
-        setUid(formatted);
-        setScanning(false);
-        ctrl.abort();
-      };
-      ndef.onreadingerror = () => {
-        setScanError("Could not read tag — try repositioning it.");
-        setScanning(false);
-      };
+      const scannedUid = await acr.readUid(ctrl.signal);
+      setUid(scannedUid);
     } catch (err: unknown) {
       if ((err as Error)?.name === "AbortError") return;
       setScanError(err instanceof Error ? err.message : "Scan failed");
+    } finally {
       setScanning(false);
     }
   }
@@ -205,16 +195,13 @@ export default function NfcWorkflow() {
     }
   }
 
-  // ── Write short link to physical tag ─────────────────────────
+  // ── Write short link to physical tag via ACR122U ─────────────
   async function handleWriteTag() {
-    if (!nfcAvailable || !createdTagId) return;
+    if (!createdTagId) return;
     setWriting(true);
     setWriteError("");
     try {
-      const ndef = new (window as unknown as { NDEFReader: new () => {
-        write: (msg: unknown) => Promise<void>;
-      } }).NDEFReader();
-      await ndef.write({ records: [{ recordType: "url", data: shortLink }] });
+      await acr.writeNdef(shortLink);
       await updateNfcTag.mutateAsync({ tagId: createdTagId, data: { written: true } });
       queryClient.invalidateQueries({ queryKey: getListNfcTagsQueryKey() });
       setStep(5);
@@ -302,13 +289,61 @@ export default function NfcWorkflow() {
               <CardTitle className="text-sm">Scan NFC Tag</CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              <p className="text-xs text-muted-foreground">
-                Place an NTAG213 sticker on the card, then scan it to capture the chip UID.
-                This permanently links the physical tag to the inventory record.
-              </p>
+              <p className="text-xs text-muted-foreground">Scan your NFC chip</p>
 
-              {/* Scan zone */}
-              {nfcAvailable ? (
+              {/* Reader status banner */}
+              {acr.status === "ready" ? (
+                <div className="flex items-center gap-3 px-4 py-3 border border-green-500/30 bg-green-500/5">
+                  <div className="h-2 w-2 rounded-full bg-green-400" />
+                  <span className="text-sm font-medium text-green-400">Connected</span>
+                  <span className="text-muted-foreground/40 text-xs">·</span>
+                  <span className="text-sm text-foreground">{acr.deviceName}</span>
+                  <span className="ml-auto flex items-center gap-1.5 text-sm font-semibold text-green-400">
+                    <CheckCircle2 className="h-4 w-4" /> Ready
+                  </span>
+                </div>
+              ) : acr.status === "connecting" ? (
+                <div className="flex items-center gap-2 px-4 py-3 border border-border">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Connecting to reader…</span>
+                </div>
+              ) : acr.status === "error" ? (
+                <div className="flex items-start gap-2 p-3 border border-red-500/30 bg-red-500/5">
+                  <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-red-400">Reader error</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{acr.errorMessage}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 p-3 border border-red-500/30 bg-red-500/5">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-red-400">NFC reader not detected</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {acr.status === "unavailable"
+                          ? "WebUSB is not supported in this browser. Use Chrome or Edge."
+                          : "Connect your ACR122U, then click Connect Reader."}
+                      </p>
+                    </div>
+                  </div>
+                  {acr.status === "not_connected" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={acr.connect}
+                      className="shrink-0 border-border text-muted-foreground hover:text-foreground"
+                    >
+                      <Usb className="h-3.5 w-3.5 mr-1.5" />
+                      Connect Reader
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {/* Scan zone — only shown when reader is ready */}
+              {readerReady && (
                 <div
                   data-testid="scan-zone"
                   className={`flex flex-col items-center justify-center py-12 border-2 border-dashed cursor-pointer select-none transition-colors
@@ -338,21 +373,11 @@ export default function NfcWorkflow() {
                     </>
                   ) : (
                     <>
-                      <Wifi className="h-12 w-12 text-muted-foreground/30" />
+                      <Radio className="h-12 w-12 text-muted-foreground/30" />
                       <p className="text-sm font-medium text-muted-foreground mt-4">Click to start scanning</p>
-                      <p className="text-xs text-muted-foreground/50 mt-1">Chrome + Android NFC required</p>
+                      <p className="text-xs text-muted-foreground/50 mt-1">Hold NFC chip over ACR122U</p>
                     </>
                   )}
-                </div>
-              ) : (
-                <div className="flex items-start gap-2 p-3 border border-yellow-500/30 bg-yellow-500/5">
-                  <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
-                  <div className="text-sm">
-                    <p className="font-medium text-yellow-400">Web NFC not available</p>
-                    <p className="text-muted-foreground text-xs mt-1">
-                      Requires Chrome on Android with NFC enabled. Enter the UID manually below.
-                    </p>
-                  </div>
                 </div>
               )}
 
@@ -365,7 +390,7 @@ export default function NfcWorkflow() {
               {/* Manual UID entry */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">
-                  {nfcAvailable ? "Or enter UID manually" : "NFC Tag UID"}
+                  {readerReady ? "Or enter UID manually" : "NFC Tag UID"}
                 </label>
                 <Input
                   data-testid="input-uid"
@@ -687,11 +712,11 @@ export default function NfcWorkflow() {
                 ))}
               </div>
 
-              {!nfcAvailable && !createdCardId && (
+              {!readerReady && !createdCardId && (
                 <div className="flex items-start gap-2 p-3 border border-yellow-500/30 bg-yellow-500/5">
                   <AlertCircle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
                   <p className="text-xs text-yellow-300">
-                    Web NFC not available — the inventory record will be created and you can mark the tag as written manually.
+                    NFC reader not connected — the inventory record will be created and you can mark the tag as written manually.
                   </p>
                 </div>
               )}
@@ -741,10 +766,10 @@ export default function NfcWorkflow() {
                     </div>
                   )}
 
-                  {nfcAvailable && (
+                  {readerReady && (
                     <div className="space-y-2">
                       <p className="text-xs text-muted-foreground text-center">
-                        Hold the NTAG213 sticker near your reader, then click Write.
+                        Hold the NFC chip over the ACR122U, then click Write.
                       </p>
                       <Button
                         data-testid="button-write-tag"

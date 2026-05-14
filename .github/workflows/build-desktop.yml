@@ -27,7 +27,7 @@ jobs:
           version: latest
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
 
       - name: Build API server
         run: pnpm --filter @workspace/api-server run build

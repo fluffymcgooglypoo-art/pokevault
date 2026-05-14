@@ -32,6 +32,8 @@ export interface Card {
   short_code?: string | null;
   /** @nullable */
   nfc_tag_id?: number | null;
+  /** @nullable */
+  tag_uid?: string | null;
   nfc_written?: boolean;
   /** @nullable */
   percent_paid?: number | null;

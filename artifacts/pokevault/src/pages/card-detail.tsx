@@ -390,6 +390,13 @@ export default function CardDetail() {
                       <p className="text-foreground mt-0.5" data-testid={`text-detail-${label?.toLowerCase().replace(/ /g, "-")}`}>{value}</p>
                     </div>
                   ))}
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">NFC UID</p>
+                    <p
+                      className={`mt-0.5 font-mono text-xs tracking-wider ${card.tag_uid ? "text-primary" : "text-muted-foreground/50"}`}
+                      data-testid="text-detail-nfc-uid"
+                    >{card.tag_uid ?? "—"}</p>
+                  </div>
                 </div>
                 <div className="flex gap-3 pt-2">
                   {card.tcgplayer_url && (

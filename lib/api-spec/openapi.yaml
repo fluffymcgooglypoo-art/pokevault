@@ -452,6 +452,8 @@ components:
           type: ["string", "null"]
         nfc_tag_id:
           type: ["integer", "null"]
+        tag_uid:
+          type: ["string", "null"]
         nfc_written:
           type: boolean
         percent_paid:

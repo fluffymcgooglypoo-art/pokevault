@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, ilike, and, desc, asc, sql } from "drizzle-orm";
-import { db, cardsTable, activityLogTable, priceHistoryTable } from "@workspace/db";
+import { db, cardsTable, activityLogTable, priceHistoryTable, nfcTagsTable } from "@workspace/db";
 import {
   ListCardsQueryParams,
   GetCardParams,
@@ -15,7 +15,7 @@ import { nanoid } from "nanoid";
 
 const router: IRouter = Router();
 
-function cardToResponse(card: typeof cardsTable.$inferSelect) {
+function cardToResponse(card: typeof cardsTable.$inferSelect, tagUid?: string | null) {
   const purchasePrice = parseFloat(card.purchasePrice ?? "0");
   const marketValue = card.marketValue != null ? parseFloat(card.marketValue) : null;
   const soldPrice = card.soldPrice != null ? parseFloat(card.soldPrice) : null;
@@ -42,6 +42,7 @@ function cardToResponse(card: typeof cardsTable.$inferSelect) {
     ebay_url: card.ebayUrl ?? null,
     short_code: card.shortCode ?? null,
     nfc_tag_id: card.nfcTagId ?? null,
+    tag_uid: tagUid ?? null,
     nfc_written: card.nfcWritten,
     image_url: card.imageUrl ?? null,
     notes: card.notes ?? null,
@@ -79,7 +80,7 @@ router.get("/cards", async (req, res): Promise<void> => {
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(orderCol);
 
-  res.json(cards.map(cardToResponse));
+  res.json(cards.map((c) => cardToResponse(c)));
 });
 
 router.post("/cards", async (req, res): Promise<void> => {
@@ -140,7 +141,13 @@ router.get("/cards/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(cardToResponse(card));
+  let tagUid: string | null = null;
+  if (card.nfcTagId != null) {
+    const [tag] = await db.select({ tagUid: nfcTagsTable.tagUid }).from(nfcTagsTable).where(eq(nfcTagsTable.id, card.nfcTagId));
+    tagUid = tag?.tagUid ?? null;
+  }
+
+  res.json(cardToResponse(card, tagUid));
 });
 
 router.patch("/cards/:id", async (req, res): Promise<void> => {
